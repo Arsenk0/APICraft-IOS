@@ -36,6 +36,13 @@ public struct RequestBuilderView: View {
     
     public init() {}
     
+    private var activeTab: Int {
+        if selectedTab == 4 && viewModel.response == nil {
+            return 0
+        }
+        return selectedTab
+    }
+    
     public var body: some View {
         NavigationStack {
             ScrollView {
@@ -190,6 +197,8 @@ public struct RequestBuilderView: View {
                                             withAnimation(.snappy) {
                                                 viewModel.method = preset.method
                                                 viewModel.url = preset.url
+                                                viewModel.response = nil
+                                                viewModel.assertionLogs = []
                                                 if let body = preset.sampleBody {
                                                     viewModel.bodyType = .json
                                                     viewModel.bodyText = body
@@ -276,13 +285,13 @@ public struct RequestBuilderView: View {
                     )
                     .padding(.horizontal, 16)
                     
-                    // 3. Segmented Navigation Bar (All tabs fit neatly without truncation)
+                    // 3. Segmented Navigation Bar (Only shows Response tab when there IS a response)
                     customTabBar
                         .padding(.horizontal, 16)
                     
                     // 4. Tab Content Body
                     VStack {
-                        switch selectedTab {
+                        switch activeTab {
                         case 0:
                             queryParamsTab
                         case 1:
@@ -294,7 +303,7 @@ public struct RequestBuilderView: View {
                         case 4:
                             responseTab
                         default:
-                            EmptyView()
+                            queryParamsTab
                         }
                     }
                     .padding(.horizontal, 16)
@@ -313,6 +322,23 @@ public struct RequestBuilderView: View {
             .navigationTitle("APICraft")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation {
+                            viewModel.resetToNew()
+                            selectedTab = 0
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.circle")
+                                .font(.system(size: 14, weight: .bold))
+                            Text("New")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                    }
+                }
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isInputFocused = false
@@ -324,25 +350,9 @@ public struct RequestBuilderView: View {
                     }
                 }
                 
+                // Keyboard Toolbar only contains "Done" to dismiss without interfering with other fields
                 ToolbarItemGroup(placement: .keyboard) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(["https://", "/api/v1/", "/users", "?page=1", "&limit=10", ".json", ".com", "localhost:8080"], id: \.self) { snippet in
-                                Button(snippet) {
-                                    viewModel.url += snippet
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                }
-                                .font(.system(size: 11, design: .monospaced))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.primary.opacity(0.08))
-                                .clipShape(Capsule())
-                            }
-                        }
-                    }
-                    
                     Spacer()
-                    
                     Button("Done") {
                         isInputFocused = false
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -356,12 +366,14 @@ public struct RequestBuilderView: View {
             .onAppear {
                 if let pending = AppNavigationState.shared.pendingLoadRequest {
                     viewModel.loadFrom(request: pending)
+                    selectedTab = pending.bodyType != .none ? 2 : 0
                     AppNavigationState.shared.pendingLoadRequest = nil
                 }
             }
             .onChange(of: AppNavigationState.shared.pendingLoadRequest) { _, newReq in
                 if let req = newReq {
                     viewModel.loadFrom(request: req)
+                    selectedTab = req.bodyType != .none ? 2 : 0
                     AppNavigationState.shared.pendingLoadRequest = nil
                 }
             }
@@ -380,14 +392,16 @@ public struct RequestBuilderView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
-    // MARK: - Custom Tab Bar (Fits neatly on all device widths)
+    // MARK: - Custom Tab Bar (Dynamically displays Response tab ONLY when response exists)
     private var customTabBar: some View {
         HStack(spacing: 3) {
             tabButton(title: "Params", count: viewModel.queryParams.count, index: 0)
             tabButton(title: "Headers", count: viewModel.headers.count, index: 1)
             tabButton(title: "Body", count: viewModel.bodyType == .none ? nil : 1, index: 2)
             tabButton(title: "Tests", count: viewModel.assertions.count, index: 3)
-            tabButton(title: "Response", count: viewModel.response != nil ? 1 : nil, index: 4)
+            if viewModel.response != nil {
+                tabButton(title: "Response", count: nil, index: 4)
+            }
         }
         .padding(3)
         .background(Color(.secondarySystemBackground).opacity(0.8))

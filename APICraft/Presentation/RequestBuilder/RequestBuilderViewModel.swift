@@ -22,6 +22,19 @@ public final class RequestBuilderViewModel {
     
     public init() {}
     
+    public func resetToNew() {
+        self.title = ""
+        self.url = "https://"
+        self.method = .get
+        self.bodyType = .none
+        self.bodyText = ""
+        self.headers = [RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)]
+        self.queryParams = []
+        self.assertions = []
+        self.response = nil
+        self.assertionLogs = []
+    }
+    
     public func resolveTitle() -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty && trimmed != "Untitled Request" {
@@ -154,6 +167,17 @@ public final class RequestBuilderViewModel {
             historyItem.keyValues.append(p)
         }
         
+        for a in assertions {
+            let p = SDTestAssertion(
+                target: a.target,
+                keyPath: a.keyPath,
+                comparison: a.comparison,
+                expectedValue: a.expectedValue,
+                isEnabled: a.isEnabled
+            )
+            historyItem.assertions.append(p)
+        }
+        
         context.insert(historyItem)
         
         let allPassed = evalLogs.isEmpty ? true : evalLogs.allSatisfy { $0.isPassed }
@@ -186,6 +210,17 @@ public final class RequestBuilderViewModel {
             .filter { $0.location == .query }
             .map { RequestKeyValue(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
         
+        self.assertions = request.assertions.map {
+            RequestAssertionItem(
+                id: $0.id,
+                target: $0.target,
+                comparison: $0.comparison,
+                expectedValue: $0.expectedValue,
+                isEnabled: $0.isEnabled,
+                keyPath: $0.keyPath
+            )
+        }
+        
         self.response = nil
         self.assertionLogs = []
     }
@@ -212,6 +247,17 @@ public final class RequestBuilderViewModel {
         for q in queryParams where !q.key.isEmpty {
             let p = SDRequestParameter(key: q.key, value: q.value, isEnabled: q.isEnabled, location: .query)
             savedReq.keyValues.append(p)
+        }
+        
+        for a in assertions {
+            let p = SDTestAssertion(
+                target: a.target,
+                keyPath: a.keyPath,
+                comparison: a.comparison,
+                expectedValue: a.expectedValue,
+                isEnabled: a.isEnabled
+            )
+            savedReq.assertions.append(p)
         }
         
         context.insert(savedReq)
