@@ -18,26 +18,69 @@ public struct RequestBuilderView: View {
     
     public var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Top URL Bar
-                VStack(spacing: 8) {
-                    HStack {
-                        Picker("Метод", selection: $viewModel.method) {
+            VStack(spacing: 8) {
+                // Modern Top URL Card
+                VStack(spacing: 10) {
+                    if let activeEnv = activeEnvironments.first {
+                        HStack(spacing: 6) {
+                            Circle().fill(Color.green).frame(width: 7, height: 7)
+                            Text("Середовище: \(activeEnv.name)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    }
+                    
+                    HStack(spacing: 8) {
+                        Menu {
                             ForEach(HTTPMethodType.allCases) { m in
-                                Text(m.rawValue).tag(m)
+                                Button {
+                                    viewModel.method = m
+                                } label: {
+                                    HStack {
+                                        Text(m.rawValue)
+                                        if viewModel.method == m {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(viewModel.method.rawValue)
+                                    .font(.caption.bold().monospaced())
+                                    .foregroundStyle(MethodBadgeView.color(for: viewModel.method))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(MethodBadgeView.color(for: viewModel.method).opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        
+                        HStack {
+                            TextField("URL (напр. {{base_url}}/api)", text: $viewModel.url)
+                                .font(.system(size: 14, weight: .regular, design: .monospaced))
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .focused($isInputFocused)
+                            
+                            if !viewModel.url.isEmpty {
+                                Button {
+                                    viewModel.url = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                         }
-                        .pickerStyle(.menu)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color(.secondarySystemBackground))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(.tertiarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
-                        
-                        TextField("Введіть URL (напр. {{base_url}}/api)", text: $viewModel.url)
-                            .textFieldStyle(.roundedBorder)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .focused($isInputFocused)
                         
                         Button {
                             isInputFocused = false
@@ -45,31 +88,28 @@ public struct RequestBuilderView: View {
                                 await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
                             }
                         } label: {
-                            if viewModel.isLoading {
-                                ProgressView()
-                                    .padding(.horizontal, 6)
-                            } else {
-                                Image(systemName: "paperplane.fill")
-                                    .font(.headline)
+                            Group {
+                                if viewModel.isLoading {
+                                    ProgressView()
+                                        .tint(.white)
+                                } else {
+                                    Image(systemName: "paperplane.fill")
+                                        .font(.subheadline.bold())
+                                }
                             }
+                            .frame(width: 36, height: 36)
+                            .background(Color.blue)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
-                        .buttonStyle(.borderedProminent)
                         .disabled(viewModel.isLoading || viewModel.url.isEmpty)
                     }
-                    
-                    if let activeEnv = activeEnvironments.first {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text("Активне середовище: \(activeEnv.name)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                    }
                 }
-                .padding()
-                .background(Color(.systemBackground))
+                .padding(12)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal)
+                .padding(.top, 4)
                 
                 // Segments
                 Picker("Вкладки", selection: $selectedTab) {
@@ -80,7 +120,7 @@ public struct RequestBuilderView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.vertical, 4)
                 
                 Divider()
                 
@@ -204,58 +244,65 @@ public struct RequestBuilderView: View {
         Group {
             if let resp = viewModel.response {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 14) {
                         // Metrics Card
-                        HStack(spacing: 16) {
-                            StatusBadgeView(statusCode: resp.statusCode)
-                            
-                            Label(String(format: "%.0f ms", resp.durationMs), systemImage: "timer")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                            
-                            Label("\(resp.sizeBytes) B", systemImage: "doc")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            StatusBadgeView(statusCode: resp.statusCode, showText: true)
                             
                             Spacer()
+                            
+                            HStack(spacing: 4) {
+                                Image(systemName: "timer")
+                                    .font(.caption)
+                                Text(String(format: "%.0f ms", resp.durationMs))
+                                    .font(.caption.bold().monospacedDigit())
+                            }
+                            .foregroundStyle(.secondary)
+                            
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.caption)
+                                Text("\(resp.sizeBytes) B")
+                                    .font(.caption.bold().monospacedDigit())
+                            }
+                            .foregroundStyle(.secondary)
                         }
-                        .padding()
+                        .padding(12)
                         .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         
                         // Assertions
                         if !viewModel.assertionLogs.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Перевірки (Assertions):")
-                                    .font(.subheadline.bold())
+                                Text("Результати перевірок (Assertions):")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
                                 
                                 ForEach(viewModel.assertionLogs) { log in
-                                    HStack {
+                                    HStack(spacing: 8) {
                                         Image(systemName: log.isPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
                                             .foregroundStyle(log.isPassed ? .green : .red)
                                         Text(log.description)
                                             .font(.caption)
                                         Spacer()
                                     }
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
                             }
-                            .padding()
+                            .padding(12)
                             .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         
-                        // Body Content
+                        // Body Content with JSON Viewer
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Тіло відповіді:")
-                                .font(.subheadline.bold())
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
                             
-                            Text(resp.body ?? "(порожньо)")
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(.secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            JSONSyntaxView(rawJSON: resp.body ?? "")
                         }
                     }
                     .padding()
@@ -264,8 +311,8 @@ public struct RequestBuilderView: View {
             } else {
                 ContentUnavailableView(
                     "Немає відповіді",
-                    systemImage: "network",
-                    description: Text("Натисніть кнопку відправки для надсилання запиту.")
+                    systemImage: "paperplane.circle",
+                    description: Text("Натисніть кнопку відправки вгорі, щоб надіслати запит та отримати результат.")
                 )
             }
         }

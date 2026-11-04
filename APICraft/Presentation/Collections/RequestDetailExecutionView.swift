@@ -54,23 +54,39 @@ struct RequestDetailExecutionView: View {
             }
             
             if let resp = lastResponse {
-                Section("Результат останнього виконання") {
+                Section("Результат виконання") {
                     HStack {
-                        StatusBadgeView(statusCode: resp.statusCode)
+                        StatusBadgeView(statusCode: resp.statusCode, showText: true)
                         Spacer()
                         Label(String(format: "%.0f ms", resp.durationMs), systemImage: "timer")
-                            .font(.caption)
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
-                        Label("\(resp.sizeBytes) B", systemImage: "doc")
-                            .font(.caption)
+                        Label("\(resp.sizeBytes) B", systemImage: "arrow.down.circle")
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     
                     if let body = resp.body, !body.isEmpty {
-                        Text(body)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(10)
-                            .textSelection(.enabled)
+                        JSONSyntaxView(rawJSON: body)
+                            .padding(.top, 4)
+                    }
+                }
+            } else if let savedResult = request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt }).first {
+                Section("Збережена відповідь з історії") {
+                    HStack {
+                        StatusBadgeView(statusCode: savedResult.statusCode, showText: true)
+                        Spacer()
+                        Label(String(format: "%.0f ms", savedResult.responseDurationMs), systemImage: "timer")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Label("\(savedResult.responseBodySize) B", systemImage: "arrow.down.circle")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    if let body = savedResult.responseBody, !body.isEmpty {
+                        JSONSyntaxView(rawJSON: body)
+                            .padding(.top, 4)
                     }
                 }
             }
