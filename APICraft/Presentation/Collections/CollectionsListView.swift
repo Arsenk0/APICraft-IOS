@@ -21,12 +21,16 @@ public struct CollectionsListView: View {
                     )
                 } else {
                     ForEach(collections) { collection in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(collection.name)
-                                .font(.headline)
-                            Text("\(collection.requests.count) запитів")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        NavigationLink {
+                            CollectionDetailView(collection: collection)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(collection.name)
+                                    .font(.headline)
+                                Text("\(collection.requests.count) запитів")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .onDelete(perform: deleteCollections)

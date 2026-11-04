@@ -4,11 +4,17 @@ import SwiftData
 public struct RequestBuilderView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<SDEnvironment> { $0.isSelected }) private var activeEnvironments: [SDEnvironment]
+    @Query(sort: \SDCollection.name) private var collections: [SDCollection]
     
     @State private var viewModel = RequestBuilderViewModel()
     @State private var selectedTab = 0 // 0: Headers, 1: Query, 2: Body, 3: Response
+    @FocusState private var isInputFocused: Bool
     
-    public init() {}
+    @State private var showingSaveSheet = false
+    @State private var requestSaveTitle = ""
+    @State private var selectedCollectionForSave: SDCollection?
+    @State private var showingNewColAlert = false
+    @State private var newColName = ""
     
     public var body: some View {
         NavigationStack {
@@ -31,8 +37,10 @@ public struct RequestBuilderView: View {
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .focused($isInputFocused)
                         
                         Button {
+                            isInputFocused = false
                             Task {
                                 await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
                             }
@@ -93,6 +101,29 @@ public struct RequestBuilderView: View {
             }
             .navigationTitle("APICraft")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isInputFocused = false
+                        requestSaveTitle = viewModel.title.isEmpty ? viewModel.url : viewModel.title
+                        selectedCollectionForSave = collections.first
+                        showingSaveSheet = true
+                    } label: {
+                        Label("Зберегти", systemImage: "folder.badge.plus")
+                    }
+                }
+                
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Готово") {
+                        isInputFocused = false
+                    }
+                    .font(.body.bold())
+                }
+            }
+            .sheet(isPresented: $showingSaveSheet) {
+                saveToCollectionSheet
+            }
         }
     }
     
@@ -104,8 +135,10 @@ public struct RequestBuilderView: View {
                         .labelsHidden()
                     TextField("Key", text: $item.key)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isInputFocused)
                     TextField("Value", text: $item.value)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isInputFocused)
                 }
             }
             .onDelete { indices in
@@ -118,6 +151,7 @@ public struct RequestBuilderView: View {
                 Label("Додати заголовок", systemImage: "plus")
             }
         }
+        .scrollDismissesKeyboard(.interactively)
     }
     
     private var queryTab: some View {
@@ -128,8 +162,10 @@ public struct RequestBuilderView: View {
                         .labelsHidden()
                     TextField("Параметр", text: $item.key)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isInputFocused)
                     TextField("Значення", text: $item.value)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isInputFocused)
                 }
             }
             .onDelete { indices in
@@ -142,6 +178,7 @@ public struct RequestBuilderView: View {
                 Label("Додати параметр", systemImage: "plus")
             }
         }
+        .scrollDismissesKeyboard(.interactively)
     }
     
     private var bodyTab: some View {
@@ -155,6 +192,7 @@ public struct RequestBuilderView: View {
             
             TextEditor(text: $viewModel.bodyText)
                 .font(.system(.body, design: .monospaced))
+                .focused($isInputFocused)
                 .padding(8)
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -222,6 +260,7 @@ public struct RequestBuilderView: View {
                     }
                     .padding()
                 }
+                .scrollDismissesKeyboard(.interactively)
             } else {
                 ContentUnavailableView(
                     "Немає відповіді",
@@ -230,5 +269,73 @@ public struct RequestBuilderView: View {
                 )
             }
         }
+    }
+    
+    private var saveToCollectionSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Назва запиту") {
+                    TextField("Наприклад: Отримати користувача", text: $requestSaveTitle)
+                        .focused($isInputFocused)
+                }
+                
+                Section("Колекція") {
+                    if collections.isEmpty {
+                        Text("У вас ще немає створених колекцій.")
+                            .foregroundStyle(.secondary)
+                        Button("Створити нову колекцію") {
+                            showingNewColAlert = true
+                        }
+                    } else {
+                        Picker("Оберіть колекцію", selection: $selectedCollectionForSave) {
+                            ForEach(collections) { col in
+                                Text(col.name).tag(Optional(col))
+                            }
+                        }
+                        
+                        Button {
+                            showingNewColAlert = true
+                        } label: {
+                            Label("Створити ще одну колекцію", systemImage: "plus")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Зберегти запит")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Скасувати") {
+                        showingSaveSheet = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Зберегти") {
+                        if let targetCol = selectedCollectionForSave ?? collections.first {
+                            viewModel.saveToCollection(
+                                collection: targetCol,
+                                customTitle: requestSaveTitle,
+                                context: modelContext
+                            )
+                            showingSaveSheet = false
+                        }
+                    }
+                    .disabled(collections.isEmpty && selectedCollectionForSave == nil)
+                }
+            }
+            .alert("Нова колекція", isPresented: $showingNewColAlert) {
+                TextField("Назва колекції", text: $newColName)
+                Button("Створити") {
+                    if !newColName.isEmpty {
+                        let newCol = SDCollection(name: newColName)
+                        modelContext.insert(newCol)
+                        selectedCollectionForSave = newCol
+                        newColName = ""
+                    }
+                }
+                Button("Скасувати", role: .cancel) {}
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

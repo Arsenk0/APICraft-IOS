@@ -89,6 +89,53 @@ public final class RequestBuilderViewModel {
         
         try? context.save()
     }
+    
+    func loadFrom(request: SDRequest) {
+        self.title = request.title
+        self.url = request.urlTemplate
+        self.method = request.method
+        self.bodyType = request.bodyType
+        self.bodyText = request.rawBodyContent ?? ""
+        
+        let loadedHeaders = request.keyValues
+            .filter { $0.location == .header }
+            .map { RequestKeyValue(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
+        self.headers = loadedHeaders.isEmpty ? [RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)] : loadedHeaders
+        
+        self.queryParams = request.keyValues
+            .filter { $0.location == .query }
+            .map { RequestKeyValue(key: $0.key, value: $0.value, isEnabled: $0.isEnabled) }
+        
+        self.response = nil
+        self.assertionLogs = []
+    }
+    
+    func saveToCollection(collection: SDCollection, customTitle: String?, context: ModelContext) {
+        let reqTitle = (customTitle?.isEmpty ?? true) ? (title.isEmpty ? url : title) : customTitle!
+        let savedReq = SDRequest(
+            title: reqTitle,
+            urlTemplate: url,
+            method: method,
+            bodyType: bodyType,
+            rawBodyContent: bodyText,
+            isHistoryItem: false
+        )
+        savedReq.collection = collection
+        
+        for h in headers where !h.key.isEmpty {
+            let p = SDRequestParameter(key: h.key, value: h.value, isEnabled: h.isEnabled, location: .header)
+            savedReq.keyValues.append(p)
+        }
+        
+        for q in queryParams where !q.key.isEmpty {
+            let p = SDRequestParameter(key: q.key, value: q.value, isEnabled: q.isEnabled, location: .query)
+            savedReq.keyValues.append(p)
+        }
+        
+        context.insert(savedReq)
+        collection.requests.append(savedReq)
+        try? context.save()
+    }
 }
 
 public struct RequestKeyValue: Identifiable {
