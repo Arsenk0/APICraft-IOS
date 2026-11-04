@@ -33,3 +33,4 @@ public struct MethodBadgeView: View {
             )
     }
 }
+

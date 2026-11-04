@@ -18,109 +18,140 @@ public struct RequestBuilderView: View {
     
     public var body: some View {
         NavigationStack {
-            VStack(spacing: 8) {
-                // Modern Top URL Card
-                VStack(spacing: 10) {
-                    if let activeEnv = activeEnvironments.first {
-                        HStack(spacing: 6) {
-                            Circle().fill(Color.green).frame(width: 7, height: 7)
-                            Text("Середовище: \(activeEnv.name)")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Spacer()
+            VStack(spacing: 10) {
+                // 1. Environment Indicator
+                if let activeEnv = activeEnvironments.first {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color.green).frame(width: 7, height: 7)
+                        Text("Середовище: \(activeEnv.name)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                }
+                
+                // 2. Horizontal Method Bar with Vibrant Full-Fill Colors
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(HTTPMethodType.allCases) { m in
+                            let isSelected = viewModel.method == m
+                            let color = MethodBadgeView.color(for: m)
+                            
+                            Button {
+                                withAnimation(.snappy(duration: 0.2)) {
+                                    viewModel.method = m
+                                }
+                            } label: {
+                                Text(m.rawValue)
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(isSelected ? color : color.opacity(0.12))
+                                    .foregroundStyle(isSelected ? Color.white : color)
+                                    .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(color.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
+                                    )
+                            }
                         }
                     }
+                    .padding(.horizontal, 16)
+                }
+                
+                // 3. Spacious Full-Width URL Input Box
+                HStack(spacing: 8) {
+                    Image(systemName: "globe")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                     
-                    HStack(spacing: 8) {
-                        Menu {
-                            ForEach(HTTPMethodType.allCases) { m in
-                                Button {
-                                    viewModel.method = m
-                                } label: {
-                                    HStack {
-                                        Text(m.rawValue)
-                                        if viewModel.method == m {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(viewModel.method.rawValue)
-                                    .font(.caption.bold().monospaced())
-                                    .foregroundStyle(MethodBadgeView.color(for: viewModel.method))
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(MethodBadgeView.color(for: viewModel.method).opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        
-                        HStack {
-                            TextField("URL (напр. {{base_url}}/api)", text: $viewModel.url)
-                                .font(.system(size: 14, weight: .regular, design: .monospaced))
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .focused($isInputFocused)
-                            
-                            if !viewModel.url.isEmpty {
-                                Button {
-                                    viewModel.url = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color(.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        
+                    TextField("https://api.example.com/v1/resource", text: $viewModel.url)
+                        .font(.system(size: 15, weight: .regular, design: .monospaced))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .focused($isInputFocused)
+                    
+                    if !viewModel.url.isEmpty {
                         Button {
-                            isInputFocused = false
-                            Task {
-                                await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
+                            viewModel.url = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        }
+                    } else if UIPasteboard.general.hasStrings {
+                        Button {
+                            if let pasteString = UIPasteboard.general.string {
+                                viewModel.url = pasteString
                             }
                         } label: {
-                            Group {
-                                if viewModel.isLoading {
-                                    ProgressView()
-                                        .tint(.white)
-                                } else {
-                                    Image(systemName: "paperplane.fill")
-                                        .font(.subheadline.bold())
-                                }
-                            }
-                            .frame(width: 36, height: 36)
-                            .background(Color.blue)
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.subheadline)
+                                .foregroundStyle(.blue)
                         }
-                        .disabled(viewModel.isLoading || viewModel.url.isEmpty)
                     }
                 }
-                .padding(12)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
                 .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .padding(.horizontal)
-                .padding(.top, 4)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
                 
-                // Segments
+                // 4. Prominent Full-Width Send Request Button
+                Button {
+                    isInputFocused = false
+                    Task {
+                        await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = 3 // Auto-switch to "Відповідь"
+                        }
+                        let haptic = UINotificationFeedbackGenerator()
+                        if let code = viewModel.response?.statusCode, code >= 200 && code < 400 {
+                            haptic.notificationOccurred(.success)
+                        } else {
+                            haptic.notificationOccurred(.warning)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Надсилання запиту...")
+                                .font(.subheadline.bold())
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .font(.subheadline.bold())
+                            Text("Надіслати запит")
+                                .font(.subheadline.bold())
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(viewModel.url.isEmpty ? Color.gray.opacity(0.3) : Color.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(viewModel.isLoading || viewModel.url.isEmpty)
+                .padding(.horizontal, 16)
+                
+                // 5. Segments with Status Notification Badge
                 Picker("Вкладки", selection: $selectedTab) {
                     Text("Headers (\(viewModel.headers.count))").tag(0)
                     Text("Query (\(viewModel.queryParams.count))").tag(1)
                     Text("Body").tag(2)
-                    Text("Відповідь").tag(3)
+                    
+                    if let resp = viewModel.response {
+                        Text(resp.statusCode > 0 ? "Відповідь (\(resp.statusCode))" : "Відповідь ⚠️").tag(3)
+                    } else {
+                        Text("Відповідь").tag(3)
+                    }
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
                 
                 Divider()
                 
