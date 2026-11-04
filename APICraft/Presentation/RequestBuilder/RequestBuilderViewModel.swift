@@ -4,7 +4,7 @@ import Observation
 
 @Observable
 public final class RequestBuilderViewModel {
-    public var title: String = "Новий запит"
+    public var title: String = "Untitled Request"
     public var url: String = "https://jsonplaceholder.typicode.com/todos/1"
     public var method: HTTPMethodType = .get
     public var bodyType: BodyType = .none

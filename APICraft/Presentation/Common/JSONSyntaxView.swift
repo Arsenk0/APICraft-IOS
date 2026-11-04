@@ -47,7 +47,7 @@ public struct JSONSyntaxView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
-                        Text(isCopied ? "Скопійовано" : "Копіювати")
+                        Text(isCopied ? "Copied" : "Copy")
                     }
                     .font(.caption2.bold())
                     .padding(.horizontal, 8)

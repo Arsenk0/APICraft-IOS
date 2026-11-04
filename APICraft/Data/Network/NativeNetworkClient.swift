@@ -20,7 +20,7 @@ public actor NativeNetworkClient {
         bodyType: BodyType
     ) async -> NetworkResponse {
         guard var components = URLComponents(string: urlString) else {
-            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Некоректний URL")
+            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Invalid URL")
         }
         
         if !queryItems.isEmpty {
@@ -30,7 +30,7 @@ public actor NativeNetworkClient {
         }
         
         guard let url = components.url else {
-            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Неможливо збудувати URL")
+            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Unable to build URL")
         }
         
         var request = URLRequest(url: url)
@@ -53,7 +53,7 @@ public actor NativeNetworkClient {
             let duration = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: duration, sizeBytes: data.count, error: "Невалідний тип відповіді")
+                return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: duration, sizeBytes: data.count, error: "Invalid response type")
             }
             
             var respHeaders: [String: String] = [:]

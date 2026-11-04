@@ -15,16 +15,16 @@ public struct HistoryListView: View {
             List {
                 if historyRequests.isEmpty {
                     ContentUnavailableView(
-                        "Історія порожня",
+                        "History is Empty",
                         systemImage: "clock.arrow.circlepath",
-                        description: Text("Кожен виконаний запит автоматично зберігається тут з деталями та статусом.")
+                        description: Text("Every executed request will automatically be saved here with execution details and status.")
                     )
                 } else {
                     ForEach(historyRequests) { req in
                         NavigationLink {
                             RequestDetailExecutionView(request: req)
                         } label: {
-                            HStack(alignment: .center, spacing: 12) {
+                            HStack(alignment: .center, spacing: 10) {
                                 MethodBadgeView(method: req.method)
                                 
                                 VStack(alignment: .leading, spacing: 4) {
@@ -46,7 +46,7 @@ public struct HistoryListView: View {
                                     .foregroundStyle(.tertiary)
                                 }
                                 
-                                Spacer()
+                                Spacer(minLength: 4)
                                 
                                 if let lastResult = req.executionHistory.last {
                                     StatusBadgeView(statusCode: lastResult.statusCode)
@@ -58,27 +58,27 @@ public struct HistoryListView: View {
                     .onDelete(perform: deleteHistory)
                 }
             }
-            .navigationTitle("Історія викликів")
+            .navigationTitle("History")
             .toolbar {
                 if !historyRequests.isEmpty {
                     Button(role: .destructive) {
                         showingClearConfirmation = true
                     } label: {
-                        Label("Очистити", systemImage: "trash")
+                        Label("Clear", systemImage: "trash")
                     }
                 }
             }
             .confirmationDialog(
-                "Очистити всю історію?",
+                "Clear All History?",
                 isPresented: $showingClearConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Очистити історію", role: .destructive) {
+                Button("Clear History", role: .destructive) {
                     clearAllHistory()
                 }
-                Button("Скасувати", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Усі збережені записи історії виконаних запитів буде видалено.")
+                Text("All saved request history logs will be permanently deleted.")
             }
         }
     }

@@ -16,9 +16,9 @@ struct RequestDetailExecutionView: View {
     
     public var body: some View {
         Form {
-            Section("Параметри виклику") {
-                HStack {
-                    Picker("Метод", selection: $request.method) {
+            Section("Request Setup") {
+                HStack(spacing: 8) {
+                    Picker("Method", selection: $request.method) {
                         ForEach(HTTPMethodType.allCases) { m in
                             Text(m.rawValue).tag(m)
                         }
@@ -26,10 +26,12 @@ struct RequestDetailExecutionView: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                     
-                    TextField("URL", text: $request.urlTemplate)
+                    TextField("https://api.example.com", text: $request.urlTemplate)
+                        .font(.system(size: 14, design: .monospaced))
                         .focused($isFocused)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
                 }
                 
                 Button {
@@ -44,26 +46,28 @@ struct RequestDetailExecutionView: View {
                             ProgressView()
                                 .padding(.horizontal, 4)
                         } else {
-                            Label("Виконати запит", systemImage: "paperplane.fill")
+                            Label("Execute Request", systemImage: "paperplane.fill")
                                 .bold()
                         }
                         Spacer()
                     }
                 }
-                .disabled(isExecuting || request.urlTemplate.isEmpty)
+                .disabled(isExecuting || request.urlTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             
             if let resp = lastResponse {
-                Section("Результат виконання") {
-                    HStack {
+                Section("Execution Result") {
+                    HStack(spacing: 8) {
                         StatusBadgeView(statusCode: resp.statusCode, showText: true)
-                        Spacer()
+                        Spacer(minLength: 4)
                         Label(String(format: "%.0f ms", resp.durationMs), systemImage: "timer")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         Label("\(resp.sizeBytes) B", systemImage: "arrow.down.circle")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     
                     if let body = resp.body, !body.isEmpty {
@@ -72,16 +76,18 @@ struct RequestDetailExecutionView: View {
                     }
                 }
             } else if let savedResult = request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt }).first {
-                Section("Збережена відповідь з історії") {
-                    HStack {
+                Section("Saved Response from History") {
+                    HStack(spacing: 8) {
                         StatusBadgeView(statusCode: savedResult.statusCode, showText: true)
-                        Spacer()
+                        Spacer(minLength: 4)
                         Label(String(format: "%.0f ms", savedResult.responseDurationMs), systemImage: "timer")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         Label("\(savedResult.responseBodySize) B", systemImage: "arrow.down.circle")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     
                     if let body = savedResult.responseBody, !body.isEmpty {
@@ -91,39 +97,45 @@ struct RequestDetailExecutionView: View {
                 }
             }
             
-            Section("Параметри та Заголовки (\(request.keyValues.count))") {
+            Section("Parameters & Headers (\(request.keyValues.count))") {
                 if request.keyValues.isEmpty {
-                    Text("Параметри відсутні")
+                    Text("No parameters or headers")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(request.keyValues) { kv in
-                        HStack {
+                        HStack(spacing: 8) {
                             Text(kv.location.rawValue)
                                 .font(.caption2.bold())
-                                .padding(4)
-                                .background(Color.secondary.opacity(0.1))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.secondary.opacity(0.12))
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                            
                             Text(kv.key)
                                 .font(.subheadline.bold())
-                            Spacer()
+                                .lineLimit(1)
+                            
+                            Spacer(minLength: 4)
+                            
                             Text(kv.value)
-                                .font(.caption)
+                                .font(.caption.monospaced())
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
                 }
             }
             
             if !request.executionHistory.isEmpty {
-                Section("Історія виконання (\(request.executionHistory.count))") {
+                Section("Execution History (\(request.executionHistory.count))") {
                     ForEach(request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt })) { hist in
-                        HStack {
+                        HStack(spacing: 8) {
                             StatusBadgeView(statusCode: hist.statusCode)
                             Text(String(format: "%.0f ms", hist.responseDurationMs))
-                                .font(.caption)
+                                .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
-                            Spacer()
+                            Spacer(minLength: 4)
                             Text(hist.executedAt.formatted(date: .omitted, time: .standard))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -137,7 +149,7 @@ struct RequestDetailExecutionView: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("Готово") {
+                Button("Done") {
                     isFocused = false
                 }
                 .font(.body.bold())

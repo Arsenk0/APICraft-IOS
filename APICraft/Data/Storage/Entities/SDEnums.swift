@@ -24,7 +24,7 @@ public enum BodyType: String, Codable, CaseIterable, Identifiable {
 public enum AssertionComparison: String, Codable, CaseIterable, Identifiable {
     case equals = "=="
     case notEquals = "!="
-    case contains = "Містить"
+    case contains = "contains"
     case greaterThan = ">"
     case lessThan = "<"
     
@@ -33,9 +33,9 @@ public enum AssertionComparison: String, Codable, CaseIterable, Identifiable {
 
 public enum AssertionTarget: String, Codable, CaseIterable, Identifiable {
     case statusCode = "Status Code"
-    case responseTime = "Час відгуку (ms)"
+    case responseTime = "Response Time (ms)"
     case header = "Header"
-    case bodyContains = "Тіло містить текст"
+    case bodyContains = "Body Contains"
     
     public var id: String { rawValue }
 }

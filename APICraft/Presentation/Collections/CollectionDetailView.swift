@@ -20,38 +20,33 @@ struct CollectionDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(collection.name)
                         .font(.title3.bold())
+                        .lineLimit(2)
                     if let details = collection.details, !details.isEmpty {
                         Text(details)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    Text("Створено: \(collection.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                    Text("Created: \(collection.createdAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
                 .padding(.vertical, 4)
             }
             
-            Section("Збережені запити (\(collection.requests.count))") {
+            Section("Saved Requests (\(collection.requests.count))") {
                 if collection.requests.isEmpty {
                     ContentUnavailableView(
-                        "Запитів немає",
+                        "No Requests",
                         systemImage: "paperplane",
-                        description: Text("Збережіть запит сюди з вкладки 'Запити' або додайте новий через кнопку +.")
+                        description: Text("Save requests from the 'Requests' tab or add a new one with the + button.")
                     )
                 } else {
                     ForEach(collection.requests) { request in
                         NavigationLink {
                             RequestDetailExecutionView(request: request)
                         } label: {
-                            HStack(spacing: 12) {
-                                Text(request.method.rawValue)
-                                    .font(.caption.bold())
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(methodColor(request.method).opacity(0.15))
-                                    .foregroundStyle(methodColor(request.method))
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            HStack(spacing: 10) {
+                                MethodBadgeView(method: request.method)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(request.title)
@@ -63,7 +58,7 @@ struct CollectionDetailView: View {
                                         .lineLimit(1)
                                 }
                                 
-                                Spacer()
+                                Spacer(minLength: 4)
                                 
                                 if let lastResult = request.executionHistory.last {
                                     StatusBadgeView(statusCode: lastResult.statusCode)
@@ -97,24 +92,15 @@ struct CollectionDetailView: View {
         try? modelContext.save()
     }
     
-    private func methodColor(_ method: HTTPMethodType) -> Color {
-        switch method {
-        case .get: return .blue
-        case .post: return .green
-        case .put: return .orange
-        case .delete: return .red
-        case .patch: return .purple
-        default: return .gray
-        }
-    }
-    
     private var newRequestSheet: some View {
         NavigationStack {
             Form {
-                Section("Інформація про запит") {
-                    TextField("Назва запиту", text: $newRequestTitle)
+                Section("Request Details") {
+                    TextField("Request Title", text: $newRequestTitle)
+                        .autocorrectionDisabled()
+                        .keyboardType(.asciiCapable)
                     
-                    Picker("Метод", selection: $newRequestMethod) {
+                    Picker("Method", selection: $newRequestMethod) {
                         ForEach(HTTPMethodType.allCases) { m in
                             Text(m.rawValue).tag(m)
                         }
@@ -123,18 +109,19 @@ struct CollectionDetailView: View {
                     TextField("URL", text: $newRequestURL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
                 }
             }
-            .navigationTitle("Новий запит у колекцію")
+            .navigationTitle("New Request in Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Скасувати") {
+                    Button("Cancel") {
                         showingAddRequestAlert = false
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Додати") {
+                    Button("Add") {
                         let req = SDRequest(
                             title: newRequestTitle.isEmpty ? newRequestURL : newRequestTitle,
                             urlTemplate: newRequestURL,
@@ -150,7 +137,7 @@ struct CollectionDetailView: View {
                         newRequestTitle = ""
                         newRequestURL = "https://"
                     }
-                    .disabled(newRequestURL.isEmpty)
+                    .disabled(newRequestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }

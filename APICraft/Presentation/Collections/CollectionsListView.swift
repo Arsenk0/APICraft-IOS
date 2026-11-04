@@ -15,9 +15,9 @@ public struct CollectionsListView: View {
             List {
                 if collections.isEmpty {
                     ContentUnavailableView(
-                        "Колекції відсутні",
+                        "No Collections",
                         systemImage: "folder.badge.plus",
-                        description: Text("Створіть свою першу колекцію запитів для тестування.")
+                        description: Text("Create your first collection to organize and test API requests.")
                     )
                 } else {
                     ForEach(collections) { collection in
@@ -27,16 +27,19 @@ public struct CollectionsListView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(collection.name)
                                     .font(.headline)
-                                Text("\(collection.requests.count) запитів")
+                                    .lineLimit(1)
+                                
+                                Text("\(collection.requests.count) \(collection.requests.count == 1 ? "request" : "requests")")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                         }
                     }
                     .onDelete(perform: deleteCollections)
                 }
             }
-            .navigationTitle("Колекції")
+            .navigationTitle("Collections")
             .toolbar {
                 Button {
                     showingCreateAlert = true
@@ -44,16 +47,20 @@ public struct CollectionsListView: View {
                     Image(systemName: "plus")
                 }
             }
-            .alert("Нова колекція", isPresented: $showingCreateAlert) {
-                TextField("Назва", text: $newCollectionName)
-                Button("Створити") {
+            .alert("New Collection", isPresented: $showingCreateAlert) {
+                TextField("Collection Name", text: $newCollectionName)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+                Button("Create") {
                     if !newCollectionName.isEmpty {
                         let col = SDCollection(name: newCollectionName)
                         modelContext.insert(col)
                         newCollectionName = ""
                     }
                 }
-                Button("Скасувати", role: .cancel) {}
+                Button("Cancel", role: .cancel) {
+                    newCollectionName = ""
+                }
             }
         }
     }

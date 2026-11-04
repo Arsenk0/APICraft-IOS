@@ -15,9 +15,9 @@ public struct EnvironmentListView: View {
             List {
                 if environments.isEmpty {
                     ContentUnavailableView(
-                        "Немає середовищ",
+                        "No Environments",
                         systemImage: "slider.horizontal.3",
-                        description: Text("Додайте середовища (Dev, Staging, Prod) для використання змінних {{base_url}}.")
+                        description: Text("Add environments (e.g. Development, Staging, Production) to switch dynamic variables like {{base_url}}.")
                     )
                 } else {
                     ForEach(environments) { env in
@@ -25,13 +25,17 @@ public struct EnvironmentListView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(env.name)
                                     .font(.headline)
-                                Text("\(env.variables.count) змінних")
+                                    .lineLimit(1)
+                                
+                                Text("\(env.variables.count) \(env.variables.count == 1 ? "variable" : "variables")")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                             Spacer()
                             if env.isSelected {
                                 Image(systemName: "checkmark")
+                                    .font(.body.bold())
                                     .foregroundStyle(.blue)
                             }
                         }
@@ -39,12 +43,13 @@ public struct EnvironmentListView: View {
                         .onTapGesture {
                             for e in environments { e.isSelected = false }
                             env.isSelected = true
+                            try? modelContext.save()
                         }
                     }
                     .onDelete(perform: deleteEnv)
                 }
             }
-            .navigationTitle("Середовища")
+            .navigationTitle("Environments")
             .toolbar {
                 Button {
                     showingAddAlert = true
@@ -52,20 +57,25 @@ public struct EnvironmentListView: View {
                     Image(systemName: "plus")
                 }
             }
-            .alert("Нове середовище", isPresented: $showingAddAlert) {
-                TextField("Назва (напр. Development)", text: $newEnvName)
-                Button("Створити") {
-                    if !newEnvName.isEmpty {
-                        let env = SDEnvironment(name: newEnvName, isSelected: environments.isEmpty)
-                        // Add sample base_url
+            .alert("New Environment", isPresented: $showingAddAlert) {
+                TextField("Name (e.g. Development)", text: $newEnvName)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+                Button("Create") {
+                    let trimmed = newEnvName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        let env = SDEnvironment(name: trimmed, isSelected: environments.isEmpty)
                         let variable = SDEnvironmentVariable(key: "base_url", value: "https://jsonplaceholder.typicode.com")
                         variable.environment = env
                         env.variables.append(variable)
                         modelContext.insert(env)
+                        try? modelContext.save()
                         newEnvName = ""
                     }
                 }
-                Button("Скасувати", role: .cancel) {}
+                Button("Cancel", role: .cancel) {
+                    newEnvName = ""
+                }
             }
         }
     }
@@ -74,5 +84,6 @@ public struct EnvironmentListView: View {
         for index in offsets {
             modelContext.delete(environments[index])
         }
+        try? modelContext.save()
     }
 }

@@ -33,12 +33,12 @@ public struct AssertionEngine {
                 passed = response.statusCode == expectedCode
             }
             if !passed {
-                reason = "Очікувалось \(assertion.expectedValue), але отримано \(response.statusCode)"
+                reason = "Expected \(assertion.expectedValue), but received \(response.statusCode)"
             }
             
         case .responseTime:
             let expectedTime = Double(assertion.expectedValue) ?? 500.0
-            desc = "Час відгуку \(assertion.comparison.rawValue) \(assertion.expectedValue) ms"
+            desc = "Response time \(assertion.comparison.rawValue) \(assertion.expectedValue) ms"
             switch assertion.comparison {
             case .lessThan:
                 passed = response.durationMs < expectedTime
@@ -48,13 +48,13 @@ public struct AssertionEngine {
                 passed = response.durationMs <= expectedTime
             }
             if !passed {
-                reason = "Отримано \(String(format: "%.1f", response.durationMs)) ms, що не задовольняє умову"
+                reason = "Received \(String(format: "%.1f", response.durationMs)) ms, failing condition"
             }
             
         case .header:
             let headerName = assertion.keyPath ?? ""
             let headerVal = response.headers[headerName] ?? response.headers[headerName.lowercased()] ?? ""
-            desc = "Заголовок [\(headerName)] \(assertion.comparison.rawValue) '\(assertion.expectedValue)'"
+            desc = "Header [\(headerName)] \(assertion.comparison.rawValue) '\(assertion.expectedValue)'"
             switch assertion.comparison {
             case .equals:
                 passed = headerVal == assertion.expectedValue
@@ -64,15 +64,15 @@ public struct AssertionEngine {
                 passed = !headerVal.isEmpty
             }
             if !passed {
-                reason = "Значення заголовка: '\(headerVal)'"
+                reason = "Header value: '\(headerVal)'"
             }
             
         case .bodyContains:
-            desc = "Тіло відповіді містить '\(assertion.expectedValue)'"
+            desc = "Response body contains '\(assertion.expectedValue)'"
             let bodyText = response.body ?? ""
             passed = bodyText.contains(assertion.expectedValue)
             if !passed {
-                reason = "Підрядок не знайдено у відповіді"
+                reason = "Substring not found in response"
             }
         }
         
