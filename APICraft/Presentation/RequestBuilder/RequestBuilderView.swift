@@ -47,7 +47,7 @@ public struct RequestBuilderView: View {
                                     
                                     Button {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        withAnimation(.snappy(duration: 0.2)) {
+                                        _ = withAnimation(.snappy(duration: 0.2)) {
                                             viewModel.method = m
                                         }
                                     } label: {
@@ -119,7 +119,7 @@ public struct RequestBuilderView: View {
                             isInputFocused = false
                             Task {
                                 await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                _ = withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     selectedTab = 3 // Auto-switch to "Відповідь"
                                 }
                                 let haptic = UINotificationFeedbackGenerator()
@@ -218,7 +218,7 @@ public struct RequestBuilderView: View {
             
             // Response Tab with Live Status Badge
             Button {
-                withAnimation(.spring(response: 0.25)) {
+                _ = withAnimation(.spring(response: 0.25)) {
                     selectedTab = 3
                 }
             } label: {
@@ -255,7 +255,7 @@ public struct RequestBuilderView: View {
     
     private func tabButton(title: String, count: Int?, index: Int) -> some View {
         Button {
-            withAnimation(.spring(response: 0.25)) {
+            _ = withAnimation(.spring(response: 0.25)) {
                 selectedTab = index
             }
         } label: {
@@ -420,7 +420,7 @@ public struct RequestBuilderView: View {
                             
                             Button {
                                 if let idx = viewModel.headers.firstIndex(where: { $0.id == item.id }) {
-                                    withAnimation {
+                                    _ = withAnimation {
                                         viewModel.headers.remove(at: idx)
                                     }
                                 }
@@ -455,7 +455,7 @@ public struct RequestBuilderView: View {
             }
             
             Button {
-                withAnimation {
+                _ = withAnimation {
                     viewModel.headers.append(RequestKeyValue(key: "", value: "", isEnabled: true))
                 }
             } label: {
@@ -508,7 +508,7 @@ public struct RequestBuilderView: View {
                             
                             Button {
                                 if let idx = viewModel.queryParams.firstIndex(where: { $0.id == item.id }) {
-                                    withAnimation {
+                                    _ = withAnimation {
                                         viewModel.queryParams.remove(at: idx)
                                     }
                                 }
@@ -543,7 +543,7 @@ public struct RequestBuilderView: View {
             }
             
             Button {
-                withAnimation {
+                _ = withAnimation {
                     viewModel.queryParams.append(RequestKeyValue(key: "", value: "", isEnabled: true))
                 }
             } label: {
