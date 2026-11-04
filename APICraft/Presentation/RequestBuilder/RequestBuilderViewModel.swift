@@ -14,9 +14,7 @@ public final class RequestBuilderViewModel {
         RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)
     ]
     public var queryParams: [RequestKeyValue] = []
-    public var assertions: [RequestAssertionItem] = [
-        RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200")
-    ]
+    public var assertions: [RequestAssertionItem] = []
     
     public var isLoading: Bool = false
     public var response: NetworkResponse?
@@ -120,28 +118,18 @@ public final class RequestBuilderViewModel {
         
         self.response = netResponse
         
-        // Evaluate user-defined assertions dynamically
+        // Evaluate user-defined assertions dynamically (only if active assertions exist)
         var evalLogs: [AssertionEvaluationResult] = []
         let activeAssertions = assertions.filter { $0.isEnabled }
-        if activeAssertions.isEmpty {
-            // Default check if no user assertions
-            let defaultAssertion = SDTestAssertion(
-                target: .statusCode,
-                comparison: .equals,
-                expectedValue: "200"
+        for a in activeAssertions {
+            let sdAssertion = SDTestAssertion(
+                target: a.target,
+                keyPath: a.keyPath,
+                comparison: a.comparison,
+                expectedValue: a.expectedValue,
+                isEnabled: a.isEnabled
             )
-            evalLogs.append(AssertionEngine.evaluate(assertion: defaultAssertion, response: netResponse))
-        } else {
-            for a in activeAssertions {
-                let sdAssertion = SDTestAssertion(
-                    target: a.target,
-                    keyPath: a.keyPath,
-                    comparison: a.comparison,
-                    expectedValue: a.expectedValue,
-                    isEnabled: a.isEnabled
-                )
-                evalLogs.append(AssertionEngine.evaluate(assertion: sdAssertion, response: netResponse))
-            }
+            evalLogs.append(AssertionEngine.evaluate(assertion: sdAssertion, response: netResponse))
         }
         self.assertionLogs = evalLogs
         
@@ -168,7 +156,7 @@ public final class RequestBuilderViewModel {
         
         context.insert(historyItem)
         
-        let allPassed = evalLogs.allSatisfy { $0.isPassed }
+        let allPassed = evalLogs.isEmpty ? true : evalLogs.allSatisfy { $0.isPassed }
         let execResult = SDExecutionResult(
             statusCode: netResponse.statusCode,
             responseDurationMs: netResponse.durationMs,

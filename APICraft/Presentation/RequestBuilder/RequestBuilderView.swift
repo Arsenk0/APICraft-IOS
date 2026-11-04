@@ -977,7 +977,7 @@ public struct RequestBuilderView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                // Assertions Results (Dynamic Evaluation)
+                // Assertions Results (Clean aligned layout)
                 if !viewModel.assertionLogs.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         let passedCount = viewModel.assertionLogs.filter { $0.isPassed }.count
@@ -992,25 +992,36 @@ public struct RequestBuilderView: View {
                         }
                         
                         ForEach(viewModel.assertionLogs) { log in
-                            HStack(alignment: .top, spacing: 8) {
+                            HStack(alignment: .center, spacing: 10) {
                                 Image(systemName: log.isPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
                                     .foregroundStyle(log.isPassed ? .green : .red)
-                                    .padding(.top, 1)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(log.description)
-                                        .font(.caption.bold())
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(.primary)
                                     if let fail = log.failureReason {
                                         Text(fail)
-                                            .font(.caption2)
+                                            .font(.system(size: 11, design: .monospaced))
                                             .foregroundStyle(.red)
                                     }
                                 }
+                                
                                 Spacer()
+                                
+                                Text(log.isPassed ? "PASS" : "FAIL")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(log.isPassed ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                                    .foregroundStyle(log.isPassed ? Color.green : Color.red)
+                                    .clipShape(Capsule())
                             }
-                            .padding(8)
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color(.tertiarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
                     }
                     .padding(12)
