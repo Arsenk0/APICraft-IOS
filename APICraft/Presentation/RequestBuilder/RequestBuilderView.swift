@@ -1,6 +1,15 @@
 import SwiftUI
 import SwiftData
 
+struct APIPreset: Identifiable {
+    let id = UUID()
+    let name: String
+    let method: HTTPMethodType
+    let url: String
+    let description: String
+    let sampleBody: String?
+}
+
 public struct RequestBuilderView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<SDEnvironment> { $0.isSelected }) private var activeEnvironments: [SDEnvironment]
@@ -14,6 +23,16 @@ public struct RequestBuilderView: View {
     @State private var showingNewColAlert = false
     @State private var newColName = ""
     @FocusState private var isInputFocused: Bool
+    
+    private let starterPresets: [APIPreset] = [
+        APIPreset(name: "Todos", method: .get, url: "https://jsonplaceholder.typicode.com/todos/1", description: "GET single todo item", sampleBody: nil),
+        APIPreset(name: "Users", method: .get, url: "https://jsonplaceholder.typicode.com/users", description: "GET list of users", sampleBody: nil),
+        APIPreset(name: "Create Post", method: .post, url: "https://jsonplaceholder.typicode.com/posts", description: "POST new resource", sampleBody: "{\n  \"title\": \"foo\",\n  \"body\": \"bar\",\n  \"userId\": 1\n}"),
+        APIPreset(name: "ReqRes Users", method: .get, url: "https://reqres.in/api/users?page=2", description: "GET paginated users", sampleBody: nil),
+        APIPreset(name: "Status 200", method: .get, url: "https://httpbin.org/status/200", description: "HTTPBin 200 OK test", sampleBody: nil),
+        APIPreset(name: "UUID Gen", method: .get, url: "https://httpbin.org/uuid", description: "HTTPBin UUID generator", sampleBody: nil),
+        APIPreset(name: "Cat Fact", method: .get, url: "https://catfact.ninja/fact", description: "Random daily cat fact", sampleBody: nil)
+    ]
     
     public init() {}
     
@@ -81,12 +100,39 @@ public struct RequestBuilderView: View {
                             .padding(.horizontal, 2)
                         }
                         
-                        // Clean URL Input Field
-                        HStack(alignment: .center, spacing: 8) {
-                            Image(systemName: viewModel.url.lowercased().hasPrefix("https://") ? "lock.fill" : (viewModel.url.lowercased().hasPrefix("http://") ? "lock.slash" : "globe"))
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(viewModel.url.lowercased().hasPrefix("https://") ? .green : .secondary)
-                                .padding(.leading, 10)
+                        // Adaptive URL Input Field with Interactive Scheme Switcher
+                        HStack(alignment: .center, spacing: 6) {
+                            let isHTTPS = viewModel.url.lowercased().hasPrefix("https://")
+                            let isHTTP = viewModel.url.lowercased().hasPrefix("http://")
+                            
+                            Menu {
+                                Button {
+                                    switchProtocol(to: "https://")
+                                } label: {
+                                    Label("https:// (Secure SSL)", systemImage: "lock.fill")
+                                }
+                                Button {
+                                    switchProtocol(to: "http://")
+                                } label: {
+                                    Label("http:// (Unencrypted / Local)", systemImage: "lock.slash")
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: isHTTPS ? "lock.fill" : (isHTTP ? "lock.slash" : "globe"))
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(isHTTPS ? "HTTPS" : (isHTTP ? "HTTP" : "SCHEME"))
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 7, weight: .bold))
+                                }
+                                .foregroundStyle(isHTTPS ? Color.green : (isHTTP ? Color.orange : Color.secondary))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 5)
+                                .background((isHTTPS ? Color.green : (isHTTP ? Color.orange : Color.primary)).opacity(0.12))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.leading, 8)
                             
                             TextField("https://api.example.com/v1/resource", text: $viewModel.url, axis: .vertical)
                                 .font(.system(size: 14, design: .monospaced))
@@ -127,6 +173,50 @@ public struct RequestBuilderView: View {
                         }
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                        
+                        // Starter API presets for beginners
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Label("Quick API Presets", systemImage: "sparkles")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    ForEach(starterPresets) { preset in
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            withAnimation(.snappy) {
+                                                viewModel.method = preset.method
+                                                viewModel.url = preset.url
+                                                if let body = preset.sampleBody {
+                                                    viewModel.bodyType = .json
+                                                    viewModel.bodyText = body
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Text(preset.method.rawValue)
+                                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(MethodBadgeView.color(for: preset.method))
+                                                Text(preset.name)
+                                                    .font(.system(size: 11, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                            }
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color(.secondarySystemBackground))
+                                            .clipShape(Capsule())
+                                            .overlay(
+                                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
                         
                         // Execute Request Button
                         Button {
@@ -212,6 +302,13 @@ public struct RequestBuilderView: View {
                 }
                 .padding(.top, 8)
             }
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    isInputFocused = false
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            )
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("APICraft")
             .navigationBarTitleDisplayMode(.inline)
@@ -225,6 +322,32 @@ public struct RequestBuilderView: View {
                     } label: {
                         Label("Save", systemImage: "folder.badge.plus")
                     }
+                }
+                
+                ToolbarItemGroup(placement: .keyboard) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(["https://", "/api/v1/", "/users", "?page=1", "&limit=10", ".json", ".com", "localhost:8080"], id: \.self) { snippet in
+                                Button(snippet) {
+                                    viewModel.url += snippet
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                                .font(.system(size: 11, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.primary.opacity(0.08))
+                                .clipShape(Capsule())
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Button("Done") {
+                        isInputFocused = false
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .font(.subheadline.bold())
                 }
             }
             .sheet(isPresented: $showingSaveSheet) {
@@ -243,6 +366,18 @@ public struct RequestBuilderView: View {
                 }
             }
         }
+    }
+    
+    private func switchProtocol(to scheme: String) {
+        let lower = viewModel.url.lowercased()
+        if lower.hasPrefix("https://") {
+            viewModel.url = scheme + viewModel.url.dropFirst("https://".count)
+        } else if lower.hasPrefix("http://") {
+            viewModel.url = scheme + viewModel.url.dropFirst("http://".count)
+        } else {
+            viewModel.url = scheme + viewModel.url
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     // MARK: - Custom Tab Bar (Fits neatly on all device widths)
@@ -607,7 +742,7 @@ public struct RequestBuilderView: View {
         }
     }
     
-    // MARK: - Tests / Assertions Tab (Clean, non-wrapping layout)
+    // MARK: - Tests / Assertions Tab (Balanced full-width controls)
     private var testsTab: some View {
         VStack(spacing: 12) {
             // Quick Presets
@@ -670,6 +805,7 @@ public struct RequestBuilderView: View {
                                 .labelsHidden()
                                 .tint(.green)
                             
+                            // Target selector that stretches flexibly to fill space
                             Menu {
                                 Picker("Target", selection: $bindableItem.target) {
                                     ForEach(AssertionTarget.allCases) { t in
@@ -677,43 +813,55 @@ public struct RequestBuilderView: View {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 4) {
+                                HStack {
                                     Text(bindableItem.target.rawValue)
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(.system(size: 13, weight: .semibold))
                                         .lineLimit(1)
+                                    Spacer()
                                     Image(systemName: "chevron.up.chevron.down")
                                         .font(.system(size: 9))
+                                        .foregroundStyle(.secondary)
                                 }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
                                 .background(Color(.tertiarySystemBackground))
                                 .foregroundStyle(.primary)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .fixedSize()
+                            .frame(maxWidth: .infinity)
                             
-                            Menu {
-                                Picker("Comparison", selection: $bindableItem.comparison) {
-                                    ForEach(AssertionComparison.allCases) { c in
-                                        Text(c.rawValue).tag(c)
+                            // Comparison operator selector or stable badge
+                            if bindableItem.target != .bodyContains {
+                                Menu {
+                                    Picker("Comparison", selection: $bindableItem.comparison) {
+                                        ForEach(AssertionComparison.allCases) { c in
+                                            Text(c.rawValue).tag(c)
+                                        }
                                     }
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Text(bindableItem.comparison.rawValue)
+                                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .font(.system(size: 8))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(minWidth: 44)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 7)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .foregroundStyle(.primary)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Text(bindableItem.comparison.rawValue)
-                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    Image(systemName: "chevron.up.chevron.down")
-                                        .font(.system(size: 9))
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color(.tertiarySystemBackground))
-                                .foregroundStyle(.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            } else {
+                                Text("contains")
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 7)
+                                    .background(Color(.tertiarySystemBackground).opacity(0.7))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .fixedSize()
-                            
-                            Spacer()
                             
                             Button {
                                 withAnimation {
@@ -721,26 +869,31 @@ public struct RequestBuilderView: View {
                                 }
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.red.opacity(0.8))
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.red.opacity(0.85))
                                     .padding(6)
                             }
                             .buttonStyle(.plain)
                         }
                         
                         HStack(spacing: 8) {
-                            Text("Expected:")
-                                .font(.caption.bold())
+                            Text(bindableItem.target == .bodyContains ? "Substring:" : "Expected:")
+                                .font(.system(size: 12, weight: .bold))
                                 .foregroundStyle(.secondary)
+                                .frame(width: 75, alignment: .leading)
                             
-                            TextField("e.g. 200 or 500", text: $bindableItem.expectedValue)
-                                .font(.system(size: 13, design: .monospaced))
-                                .padding(8)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .focused($isInputFocused)
-                                .autocorrectionDisabled()
-                                .keyboardType(.asciiCapable)
+                            TextField(
+                                bindableItem.target == .statusCode ? "200" :
+                                (bindableItem.target == .responseTime ? "500" : "text to match"),
+                                text: $bindableItem.expectedValue
+                            )
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.tertiarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .keyboardType(bindableItem.target == .statusCode || bindableItem.target == .responseTime ? .numberPad : .asciiCapable)
                         }
                     }
                     .padding(10)

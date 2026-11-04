@@ -4,6 +4,7 @@ public struct JSONSyntaxView: View {
     let rawJSON: String
     @State private var isCopied = false
     @State private var wrapLines = true
+    @State private var isExpanded = false
     
     public init(rawJSON: String) {
         self.rawJSON = rawJSON
@@ -36,6 +37,14 @@ public struct JSONSyntaxView: View {
         return prettyString
     }
     
+    private var lineCount: Int {
+        formattedJSON.components(separatedBy: .newlines).count
+    }
+    
+    private var isCollapsible: Bool {
+        lineCount > 12 || formattedJSON.count > 350
+    }
+    
     public var body: some View {
         VStack(spacing: 0) {
             // Header bar inside card
@@ -48,11 +57,18 @@ public struct JSONSyntaxView: View {
                         .font(.caption2.bold())
                         .foregroundStyle(.secondary)
                         .padding(.leading, 3)
+                    
+                    if lineCount > 1 {
+                        Text("• \(lineCount) lines")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 
                 Spacer()
                 
                 if !rawJSON.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    // Line wrap toggle
                     Button {
                         withAnimation {
                             wrapLines.toggle()
@@ -68,6 +84,24 @@ public struct JSONSyntaxView: View {
                     }
                     .buttonStyle(.plain)
                     
+                    // Expand/Collapse icon toggle if body is large
+                    if isCollapsible {
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isExpanded.toggle()
+                            }
+                        } label: {
+                            Image(systemName: isExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(5)
+                                .background(Color.primary.opacity(0.06))
+                                .foregroundStyle(.secondary)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    // Copy button
                     Button {
                         UIPasteboard.general.string = formattedJSON
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -118,22 +152,64 @@ public struct JSONSyntaxView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 28)
             } else {
-                if wrapLines {
-                    Text(trimmed)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(12)
-                        .textSelection(.enabled)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        Text(trimmed)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.primary)
-                            .padding(12)
-                            .textSelection(.enabled)
+                VStack(spacing: 0) {
+                    ZStack(alignment: .bottom) {
+                        Group {
+                            if wrapLines {
+                                Text(trimmed)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding(12)
+                                    .textSelection(.enabled)
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: true) {
+                                    Text(trimmed)
+                                        .font(.system(size: 12, design: .monospaced))
+                                        .foregroundStyle(.primary)
+                                        .padding(12)
+                                        .textSelection(.enabled)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                            }
+                        }
+                        .frame(maxHeight: (isCollapsible && !isExpanded) ? 180 : nil, alignment: .topLeading)
+                        .clipped()
+                        
+                        // Subtle gradient shadow when collapsed
+                        if isCollapsible && !isExpanded {
+                            LinearGradient(
+                                colors: [Color(.secondarySystemBackground).opacity(0), Color(.secondarySystemBackground)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 50)
+                            .allowsHitTesting(false)
+                        }
                     }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    
+                    // Expand / Collapse Bottom Bar
+                    if isCollapsible {
+                        Divider()
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isExpanded.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.caption2.bold())
+                                Text(isExpanded ? "Collapse Body" : "Expand Full Body (\(lineCount) lines)")
+                                    .font(.caption.bold())
+                            }
+                            .foregroundStyle(.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color(.tertiarySystemBackground).opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
