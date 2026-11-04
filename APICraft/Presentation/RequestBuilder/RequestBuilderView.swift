@@ -75,19 +75,39 @@ public struct RequestBuilderView: View {
                             .padding(.horizontal, 4)
                         }
                         
-                        // Spacious URL Input Field
-                        HStack(spacing: 10) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                        // Adaptive Multi-Line URL Input Field with Scheme Selector
+                        HStack(alignment: .top, spacing: 8) {
+                            Menu {
+                                Button("https://") {
+                                    setURLScheme("https://")
+                                }
+                                Button("http://") {
+                                    setURLScheme("http://")
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: viewModel.url.hasPrefix("https://") ? "lock.fill" : "globe")
+                                        .font(.system(size: 11, weight: .semibold))
+                                    Text(viewModel.url.hasPrefix("http://") ? "HTTP" : "HTTPS")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color.blue.opacity(0.12))
+                                .foregroundStyle(.blue)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 2)
                             
-                            TextField("https://api.example.com/v1/resource", text: $viewModel.url)
+                            TextField("api.example.com/v1/resource", text: $viewModel.url, axis: .vertical)
                                 .font(.system(size: 14, weight: .regular, design: .monospaced))
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
-                                .keyboardType(.URL)
+                                .keyboardType(.asciiCapable)
                                 .focused($isInputFocused)
-                                .lineLimit(1)
+                                .lineLimit(1...4)
+                                .padding(.vertical, 4)
                             
                             if !viewModel.url.isEmpty {
                                 Button {
@@ -98,6 +118,7 @@ public struct RequestBuilderView: View {
                                         .foregroundStyle(.tertiary)
                                 }
                                 .buttonStyle(.plain)
+                                .padding(.top, 6)
                             } else if UIPasteboard.general.hasStrings {
                                 Button {
                                     if let pasteString = UIPasteboard.general.string {
@@ -110,10 +131,11 @@ public struct RequestBuilderView: View {
                                         .foregroundStyle(.blue)
                                 }
                                 .buttonStyle(.plain)
+                                .padding(.top, 6)
                             }
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         
@@ -175,7 +197,7 @@ public struct RequestBuilderView: View {
                     )
                     .padding(.horizontal, 16)
                     
-                    // 3. Custom Segmented Navigation Bar
+                    // 3. Custom Segmented Navigation Bar (Clean & balanced, no status badges)
                     customTabBar
                         .padding(.horizontal, 16)
                     
@@ -213,19 +235,20 @@ public struct RequestBuilderView: View {
                         Label("Save", systemImage: "folder.badge.plus")
                     }
                 }
-                
-                // Clean native keyboard dismiss item
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        isInputFocused = false
-                    }
-                    .font(.subheadline.bold())
-                }
             }
             .sheet(isPresented: $showingSaveSheet) {
                 saveToCollectionSheet
             }
+        }
+    }
+    
+    private func setURLScheme(_ scheme: String) {
+        if viewModel.url.hasPrefix("https://") {
+            viewModel.url = scheme + viewModel.url.dropFirst("https://".count)
+        } else if viewModel.url.hasPrefix("http://") {
+            viewModel.url = scheme + viewModel.url.dropFirst("http://".count)
+        } else {
+            viewModel.url = scheme + viewModel.url
         }
     }
     
@@ -235,41 +258,7 @@ public struct RequestBuilderView: View {
             tabButton(title: "Headers", count: viewModel.headers.count, index: 0)
             tabButton(title: "Params", count: viewModel.queryParams.count, index: 1)
             tabButton(title: "Body", count: viewModel.bodyText.isEmpty ? nil : 1, index: 2)
-            
-            // Response Tab with Live Status Badge
-            Button {
-                withAnimation(.spring(response: 0.25)) {
-                    selectedTab = 3
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text("Response")
-                        .font(.system(size: 13, weight: selectedTab == 3 ? .bold : .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    
-                    if let resp = viewModel.response {
-                        Text("\(resp.statusCode)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(resp.statusCode >= 200 && resp.statusCode < 300 ? Color.green : Color.red)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .padding(.horizontal, 4)
-                .background(selectedTab == 3 ? Color(.secondarySystemBackground) : Color.clear)
-                .foregroundStyle(selectedTab == 3 ? Color.primary : Color.secondary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(selectedTab == 3 ? Color.primary.opacity(0.12) : Color.clear, lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
+            tabButton(title: "Response", count: nil, index: 3)
         }
         .padding(4)
         .background(Color(.secondarySystemBackground).opacity(0.5))
@@ -537,7 +526,7 @@ public struct RequestBuilderView: View {
         }
     }
     
-    // MARK: - Response Tab
+    // MARK: - Response Tab (All response status and metrics shown here cleanly)
     private var responseTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let resp = viewModel.response {

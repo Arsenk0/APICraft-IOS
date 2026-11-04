@@ -106,10 +106,11 @@ struct CollectionDetailView: View {
                         }
                     }
                     
-                    TextField("URL", text: $newRequestURL)
+                    TextField("URL", text: $newRequestURL, axis: .vertical)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
+                        .keyboardType(.asciiCapable)
+                        .lineLimit(1...3)
                 }
             }
             .navigationTitle("New Request in Collection")

@@ -17,7 +17,7 @@ struct RequestDetailExecutionView: View {
     public var body: some View {
         Form {
             Section("Request Setup") {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     Picker("Method", selection: $request.method) {
                         ForEach(HTTPMethodType.allCases) { m in
                             Text(m.rawValue).tag(m)
@@ -25,13 +25,15 @@ struct RequestDetailExecutionView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                    .padding(.top, 2)
                     
-                    TextField("https://api.example.com", text: $request.urlTemplate)
+                    TextField("https://api.example.com", text: $request.urlTemplate, axis: .vertical)
                         .font(.system(size: 14, design: .monospaced))
                         .focused($isFocused)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .keyboardType(.URL)
+                        .keyboardType(.asciiCapable)
+                        .lineLimit(1...3)
                 }
                 
                 Button {
@@ -146,15 +148,6 @@ struct RequestDetailExecutionView: View {
         }
         .navigationTitle(request.title)
         .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    isFocused = false
-                }
-                .font(.body.bold())
-            }
-        }
     }
     
     private func executeRequest() async {

@@ -44,6 +44,7 @@ struct APICraftApp: App {
     var body: some Scene {
         WindowGroup {
             MainTabView()
+                .environment(\.locale, Locale(identifier: "en_US"))
         }
         .modelContainer(sharedModelContainer)
     }
