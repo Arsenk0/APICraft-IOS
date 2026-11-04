@@ -4,7 +4,7 @@ import Observation
 
 @Observable
 public final class RequestBuilderViewModel {
-    public var title: String = "Untitled Request"
+    public var title: String = ""
     public var url: String = "https://jsonplaceholder.typicode.com/todos/1"
     public var method: HTTPMethodType = .get
     public var bodyType: BodyType = .none
@@ -14,12 +14,75 @@ public final class RequestBuilderViewModel {
         RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)
     ]
     public var queryParams: [RequestKeyValue] = []
+    public var assertions: [RequestAssertionItem] = [
+        RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200")
+    ]
     
     public var isLoading: Bool = false
     public var response: NetworkResponse?
     public var assertionLogs: [AssertionEvaluationResult] = []
     
     public init() {}
+    
+    public func resolveTitle() -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "Untitled Request" {
+            return trimmed
+        }
+        if let components = URLComponents(string: url), let host = components.host {
+            let path = components.path
+            if !path.isEmpty && path != "/" {
+                return "\(host)\(path)"
+            }
+            return host
+        }
+        let cleaned = url
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "\(method.rawValue) Request" : cleaned
+    }
+    
+    public func formatJSONBody() {
+        guard !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        if let data = bodyText.data(using: .utf8),
+           let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+           let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),
+           let prettyString = String(data: prettyData, encoding: .utf8) {
+            self.bodyText = prettyString
+        }
+    }
+    
+    public func setJSONTemplate() {
+        self.bodyType = .json
+        if bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            self.bodyText = "{\n  \"title\": \"sample\",\n  \"completed\": false\n}"
+        }
+    }
+    
+    public func syncParamsToURL() {
+        guard var components = URLComponents(string: url) else { return }
+        let activeParams = queryParams.filter { $0.isEnabled && !$0.key.isEmpty }
+        if activeParams.isEmpty {
+            components.queryItems = nil
+        } else {
+            components.queryItems = activeParams.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        if let newURL = components.string {
+            self.url = newURL
+        }
+    }
+    
+    public func syncURLToParams() {
+        guard let components = URLComponents(string: url), let items = components.queryItems, !items.isEmpty else { return }
+        var newParams: [RequestKeyValue] = []
+        for item in items {
+            newParams.append(RequestKeyValue(key: item.name, value: item.value ?? "", isEnabled: true))
+        }
+        if !newParams.isEmpty {
+            self.queryParams = newParams
+        }
+    }
     
     func sendRequest(context: ModelContext, activeEnv: SDEnvironment? = nil) async {
         isLoading = true
@@ -57,32 +120,61 @@ public final class RequestBuilderViewModel {
         
         self.response = netResponse
         
-        // Default assertions for demo
-        let defaultAssertion = SDTestAssertion(
-            target: .statusCode,
-            comparison: .equals,
-            expectedValue: "200"
-        )
-        let eval = AssertionEngine.evaluate(assertion: defaultAssertion, response: netResponse)
-        self.assertionLogs = [eval]
+        // Evaluate user-defined assertions dynamically
+        var evalLogs: [AssertionEvaluationResult] = []
+        let activeAssertions = assertions.filter { $0.isEnabled }
+        if activeAssertions.isEmpty {
+            // Default check if no user assertions
+            let defaultAssertion = SDTestAssertion(
+                target: .statusCode,
+                comparison: .equals,
+                expectedValue: "200"
+            )
+            evalLogs.append(AssertionEngine.evaluate(assertion: defaultAssertion, response: netResponse))
+        } else {
+            for a in activeAssertions {
+                let sdAssertion = SDTestAssertion(
+                    target: a.target,
+                    keyPath: a.keyPath,
+                    comparison: a.comparison,
+                    expectedValue: a.expectedValue,
+                    isEnabled: a.isEnabled
+                )
+                evalLogs.append(AssertionEngine.evaluate(assertion: sdAssertion, response: netResponse))
+            }
+        }
+        self.assertionLogs = evalLogs
         
-        // Save to History in SwiftData
+        // Save to History in SwiftData with meaningful title & full headers/params
+        let historyTitle = resolveTitle()
         let historyItem = SDRequest(
-            title: title.isEmpty ? resolvedURL : title,
+            title: historyTitle,
             urlTemplate: url,
             method: method,
             bodyType: bodyType,
             rawBodyContent: bodyText,
             isHistoryItem: true
         )
+        
+        for h in headers where !h.key.isEmpty {
+            let p = SDRequestParameter(key: h.key, value: h.value, isEnabled: h.isEnabled, location: .header)
+            historyItem.keyValues.append(p)
+        }
+        
+        for q in queryParams where !q.key.isEmpty {
+            let p = SDRequestParameter(key: q.key, value: q.value, isEnabled: q.isEnabled, location: .query)
+            historyItem.keyValues.append(p)
+        }
+        
         context.insert(historyItem)
         
+        let allPassed = evalLogs.allSatisfy { $0.isPassed }
         let execResult = SDExecutionResult(
             statusCode: netResponse.statusCode,
             responseDurationMs: netResponse.durationMs,
             responseBodySize: netResponse.sizeBytes,
             responseBody: netResponse.body,
-            isAllAssertionsPassed: eval.isPassed
+            isAllAssertionsPassed: allPassed
         )
         execResult.request = historyItem
         context.insert(execResult)
@@ -111,7 +203,9 @@ public final class RequestBuilderViewModel {
     }
     
     func saveToCollection(collection: SDCollection, customTitle: String?, context: ModelContext) {
-        let reqTitle = (customTitle?.isEmpty ?? true) ? (title.isEmpty ? url : title) : customTitle!
+        let trimmedCustom = customTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let reqTitle = trimmedCustom.isEmpty ? resolveTitle() : trimmedCustom
+        
         let savedReq = SDRequest(
             title: reqTitle,
             urlTemplate: url,
@@ -138,6 +232,7 @@ public final class RequestBuilderViewModel {
     }
 }
 
+// MARK: - Helper Models
 @Observable
 public final class RequestKeyValue: Identifiable {
     public let id: UUID
@@ -150,5 +245,31 @@ public final class RequestKeyValue: Identifiable {
         self.key = key
         self.value = value
         self.isEnabled = isEnabled
+    }
+}
+
+@Observable
+public final class RequestAssertionItem: Identifiable {
+    public let id: UUID
+    public var target: AssertionTarget
+    public var comparison: AssertionComparison
+    public var expectedValue: String
+    public var isEnabled: Bool
+    public var keyPath: String?
+    
+    public init(
+        id: UUID = UUID(),
+        target: AssertionTarget = .statusCode,
+        comparison: AssertionComparison = .equals,
+        expectedValue: String = "200",
+        isEnabled: Bool = true,
+        keyPath: String? = nil
+    ) {
+        self.id = id
+        self.target = target
+        self.comparison = comparison
+        self.expectedValue = expectedValue
+        self.isEnabled = isEnabled
+        self.keyPath = keyPath
     }
 }

@@ -38,7 +38,7 @@ struct CollectionDetailView: View {
                     ContentUnavailableView(
                         "No Requests",
                         systemImage: "paperplane",
-                        description: Text("Save requests from the 'Requests' tab or add a new one with the + button.")
+                        description: Text("Save requests from the 'Requests' tab or tap + to create one.")
                     )
                 } else {
                     ForEach(collection.requests) { request in
@@ -65,6 +65,14 @@ struct CollectionDetailView: View {
                                 }
                             }
                         }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                AppNavigationState.shared.openInBuilder(request: request)
+                            } label: {
+                                Label("Open in Builder", systemImage: "arrow.up.right.square")
+                            }
+                            .tint(.blue)
+                        }
                     }
                     .onDelete(perform: deleteRequest)
                 }
@@ -74,6 +82,9 @@ struct CollectionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Button {
+                newRequestTitle = ""
+                newRequestURL = "https://"
+                newRequestMethod = .get
                 showingAddRequestAlert = true
             } label: {
                 Image(systemName: "plus")
@@ -96,7 +107,7 @@ struct CollectionDetailView: View {
         NavigationStack {
             Form {
                 Section("Request Details") {
-                    TextField("Request Title", text: $newRequestTitle)
+                    TextField("Title (e.g. Get User)", text: $newRequestTitle)
                         .autocorrectionDisabled()
                         .keyboardType(.asciiCapable)
                     
@@ -112,8 +123,25 @@ struct CollectionDetailView: View {
                         .keyboardType(.asciiCapable)
                         .lineLimit(1...3)
                 }
+                
+                Section {
+                    Button {
+                        createRequest(andOpenInBuilder: true)
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Label("Add & Open in Builder", systemImage: "arrow.up.right.square")
+                                .bold()
+                            Spacer()
+                        }
+                    }
+                    .disabled(newRequestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } footer: {
+                    Text("Opens this request directly in the Builder so you can configure headers, body, and query parameters immediately.")
+                        .font(.caption2)
+                }
             }
-            .navigationTitle("New Request in Collection")
+            .navigationTitle("New Request")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -123,25 +151,39 @@ struct CollectionDetailView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        let req = SDRequest(
-                            title: newRequestTitle.isEmpty ? newRequestURL : newRequestTitle,
-                            urlTemplate: newRequestURL,
-                            method: newRequestMethod,
-                            bodyType: .none,
-                            isHistoryItem: false
-                        )
-                        req.collection = collection
-                        collection.requests.append(req)
-                        modelContext.insert(req)
-                        try? modelContext.save()
-                        showingAddRequestAlert = false
-                        newRequestTitle = ""
-                        newRequestURL = "https://"
+                        createRequest(andOpenInBuilder: false)
                     }
                     .disabled(newRequestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+    }
+    
+    private func createRequest(andOpenInBuilder: Bool) {
+        let trimmedTitle = newRequestTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = newRequestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTitle = trimmedTitle.isEmpty ? trimmedURL : trimmedTitle
+        
+        let req = SDRequest(
+            title: resolvedTitle,
+            urlTemplate: trimmedURL,
+            method: newRequestMethod,
+            bodyType: .none,
+            isHistoryItem: false
+        )
+        req.collection = collection
+        collection.requests.append(req)
+        modelContext.insert(req)
+        try? modelContext.save()
+        
+        showingAddRequestAlert = false
+        
+        if andOpenInBuilder {
+            AppNavigationState.shared.openInBuilder(request: req)
+        }
+        
+        newRequestTitle = ""
+        newRequestURL = "https://"
     }
 }

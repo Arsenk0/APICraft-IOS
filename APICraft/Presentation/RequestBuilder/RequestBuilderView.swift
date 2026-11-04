@@ -4,17 +4,16 @@ import SwiftData
 public struct RequestBuilderView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<SDEnvironment> { $0.isSelected }) private var activeEnvironments: [SDEnvironment]
-    @Query(sort: \SDCollection.name) private var collections: [SDCollection]
+    @Query(sort: \SDCollection.createdAt, order: .reverse) private var collections: [SDCollection]
     
     @State private var viewModel = RequestBuilderViewModel()
-    @State private var selectedTab = 0 // 0: Headers, 1: Params, 2: Body, 3: Response
-    @FocusState private var isInputFocused: Bool
-    
+    @State private var selectedTab = 0 // 0: Params, 1: Headers, 2: Body, 3: Tests, 4: Response
     @State private var showingSaveSheet = false
     @State private var requestSaveTitle = ""
     @State private var selectedCollectionForSave: SDCollection?
     @State private var showingNewColAlert = false
     @State private var newColName = ""
+    @FocusState private var isInputFocused: Bool
     
     public init() {}
     
@@ -22,60 +21,67 @@ public struct RequestBuilderView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    // 1. Active Environment Pill Banner
+                    // 1. Environment Banner
                     if let activeEnv = activeEnvironments.first {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
+                        HStack(spacing: 8) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.caption.bold())
+                                .foregroundStyle(.green)
                             Text("Environment: \(activeEnv.name)")
                                 .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .foregroundStyle(.primary)
                             Spacer()
+                            Text("\(activeEnv.variables.count) vars")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.green.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         .padding(.horizontal, 16)
                     }
                     
-                    // 2. Request Setup Card (Method Selector + URL + Send Button)
+                    // 2. Request Command Hero Card
                     VStack(spacing: 12) {
-                        // Horizontal Method Bar with Full-Fill Colors
+                        // Method Selector Chips
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
                                 ForEach(HTTPMethodType.allCases) { m in
                                     let isSelected = viewModel.method == m
                                     let color = MethodBadgeView.color(for: m)
-                                    
                                     Button {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                         withAnimation(.snappy(duration: 0.2)) {
                                             viewModel.method = m
+                                            if (m == .post || m == .put || m == .patch) && viewModel.bodyType == .none {
+                                                viewModel.bodyType = .json
+                                            }
                                         }
                                     } label: {
                                         Text(m.rawValue)
                                             .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 7)
                                             .background(
                                                 isSelected
                                                     ? color
-                                                    : color.opacity(0.16)
+                                                    : color.opacity(0.14)
                                             )
                                             .foregroundStyle(isSelected ? Color.white : color)
                                             .clipShape(Capsule())
                                             .overlay(
                                                 Capsule()
-                                                    .stroke(color.opacity(isSelected ? 0 : 0.35), lineWidth: 1)
+                                                    .stroke(color.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
                                             )
-                                            .shadow(color: isSelected ? color.opacity(0.35) : .clear, radius: 4, y: 2)
                                     }
                                     .buttonStyle(.plain)
                                 }
                             }
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, 2)
                         }
                         
-                        // Adaptive Multi-Line URL Input Field with Scheme Selector
+                        // Adaptive URL Input Field with Scheme Selector
                         HStack(alignment: .top, spacing: 8) {
                             Menu {
                                 Button("https://") {
@@ -101,7 +107,7 @@ public struct RequestBuilderView: View {
                             .padding(.top, 2)
                             
                             TextField("api.example.com/v1/resource", text: $viewModel.url, axis: .vertical)
-                                .font(.system(size: 14, weight: .regular, design: .monospaced))
+                                .font(.system(size: 14, design: .monospaced))
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.asciiCapable)
@@ -135,7 +141,7 @@ public struct RequestBuilderView: View {
                             }
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 8)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         
@@ -145,7 +151,7 @@ public struct RequestBuilderView: View {
                             Task {
                                 await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    selectedTab = 3 // Auto-switch to "Response"
+                                    selectedTab = 4 // Auto-switch to "Response"
                                 }
                                 let haptic = UINotificationFeedbackGenerator()
                                 if let code = viewModel.response?.statusCode, code >= 200 && code < 400 {
@@ -160,16 +166,16 @@ public struct RequestBuilderView: View {
                                     ProgressView()
                                         .tint(.white)
                                     Text("Sending...")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(size: 15, weight: .bold))
                                 } else {
                                     Image(systemName: "paperplane.fill")
-                                        .font(.system(size: 15, weight: .bold))
+                                        .font(.system(size: 14, weight: .bold))
                                     Text("Send Request")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(size: 15, weight: .bold))
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 13)
                             .background(
                                 LinearGradient(
                                     colors: [
@@ -182,7 +188,7 @@ public struct RequestBuilderView: View {
                             )
                             .foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .shadow(color: MethodBadgeView.color(for: viewModel.method).opacity(0.35), radius: 8, y: 3)
+                            .shadow(color: MethodBadgeView.color(for: viewModel.method).opacity(0.3), radius: 6, y: 2)
                         }
                         .buttonStyle(.plain)
                         .disabled(viewModel.isLoading || viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -197,7 +203,7 @@ public struct RequestBuilderView: View {
                     )
                     .padding(.horizontal, 16)
                     
-                    // 3. Custom Segmented Navigation Bar (Clean & balanced, no status badges)
+                    // 3. Custom Segmented Navigation Bar (Params, Headers, Body, Tests, Response)
                     customTabBar
                         .padding(.horizontal, 16)
                     
@@ -205,12 +211,14 @@ public struct RequestBuilderView: View {
                     VStack {
                         switch selectedTab {
                         case 0:
-                            headersTab
-                        case 1:
                             queryParamsTab
+                        case 1:
+                            headersTab
                         case 2:
                             bodyTab
                         case 3:
+                            testsTab
+                        case 4:
                             responseTab
                         default:
                             EmptyView()
@@ -228,7 +236,7 @@ public struct RequestBuilderView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isInputFocused = false
-                        requestSaveTitle = viewModel.title.isEmpty ? viewModel.url : viewModel.title
+                        requestSaveTitle = viewModel.title.isEmpty ? viewModel.resolveTitle() : viewModel.title
                         selectedCollectionForSave = collections.first
                         showingSaveSheet = true
                     } label: {
@@ -238,6 +246,18 @@ public struct RequestBuilderView: View {
             }
             .sheet(isPresented: $showingSaveSheet) {
                 saveToCollectionSheet
+            }
+            .onAppear {
+                if let pending = AppNavigationState.shared.pendingLoadRequest {
+                    viewModel.loadFrom(request: pending)
+                    AppNavigationState.shared.pendingLoadRequest = nil
+                }
+            }
+            .onChange(of: AppNavigationState.shared.pendingLoadRequest) { _, newReq in
+                if let req = newReq {
+                    viewModel.loadFrom(request: req)
+                    AppNavigationState.shared.pendingLoadRequest = nil
+                }
             }
         }
     }
@@ -254,14 +274,17 @@ public struct RequestBuilderView: View {
     
     // MARK: - Custom Tab Bar
     private var customTabBar: some View {
-        HStack(spacing: 6) {
-            tabButton(title: "Headers", count: viewModel.headers.count, index: 0)
-            tabButton(title: "Params", count: viewModel.queryParams.count, index: 1)
-            tabButton(title: "Body", count: viewModel.bodyText.isEmpty ? nil : 1, index: 2)
-            tabButton(title: "Response", count: nil, index: 3)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                tabButton(title: "Params", count: viewModel.queryParams.count, index: 0)
+                tabButton(title: "Headers", count: viewModel.headers.count, index: 1)
+                tabButton(title: "Body", count: viewModel.bodyType == .none ? nil : 1, index: 2)
+                tabButton(title: "Tests", count: viewModel.assertions.count, index: 3)
+                tabButton(title: "Response", count: viewModel.response != nil ? 1 : nil, index: 4)
+            }
+            .padding(4)
         }
-        .padding(4)
-        .background(Color(.secondarySystemBackground).opacity(0.5))
+        .background(Color(.secondarySystemBackground).opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
     
@@ -271,146 +294,72 @@ public struct RequestBuilderView: View {
                 selectedTab = index
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Text(title)
                     .font(.system(size: 13, weight: selectedTab == index ? .bold : .medium))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
                 
                 if let count = count, count > 0 {
                     Text("\(count)")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
-                        .background(Color.blue.opacity(0.2))
-                        .foregroundStyle(Color.blue)
+                        .background(selectedTab == index ? Color.blue : Color.secondary.opacity(0.25))
+                        .foregroundStyle(selectedTab == index ? Color.white : Color.primary)
                         .clipShape(Capsule())
                 }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 4)
-            .background(selectedTab == index ? Color(.secondarySystemBackground) : Color.clear)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .background(selectedTab == index ? Color(.systemBackground) : Color.clear)
             .foregroundStyle(selectedTab == index ? Color.primary : Color.secondary)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(selectedTab == index ? Color.primary.opacity(0.12) : Color.clear, lineWidth: 1)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(color: selectedTab == index ? Color.black.opacity(0.06) : Color.clear, radius: 2, y: 1)
         }
         .buttonStyle(.plain)
-    }
-    
-    // MARK: - Headers Tab
-    private var headersTab: some View {
-        VStack(spacing: 12) {
-            if viewModel.headers.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "tray")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("No Headers")
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.secondary)
-                    Text("Tap the button below to add request headers (e.g. Accept, Content-Type).")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.vertical, 20)
-            } else {
-                ForEach(viewModel.headers) { item in
-                    @Bindable var bindableItem = item
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Toggle("", isOn: $bindableItem.isEnabled)
-                                .labelsHidden()
-                                .tint(.blue)
-                            
-                            Text(item.key.isEmpty ? "New Header" : item.key)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(item.isEnabled ? .primary : .secondary)
-                                .lineLimit(1)
-                            
-                            Spacer()
-                            
-                            Button {
-                                withAnimation {
-                                    viewModel.headers.removeAll(where: { $0.id == item.id })
-                                }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.red.opacity(0.8))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        HStack(spacing: 8) {
-                            TextField("Key (e.g. Accept)", text: $bindableItem.key)
-                                .font(.system(size: 13, design: .monospaced))
-                                .padding(9)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .focused($isInputFocused)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.asciiCapable)
-                                .lineLimit(1)
-                            
-                            TextField("Value (e.g. application/json)", text: $bindableItem.value)
-                                .font(.system(size: 13, design: .monospaced))
-                                .padding(9)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .focused($isInputFocused)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.asciiCapable)
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }
-            
-            Button {
-                withAnimation {
-                    viewModel.headers.append(RequestKeyValue(key: "", value: "", isEnabled: true))
-                }
-            } label: {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                    Text("Add Header")
-                        .font(.subheadline.bold())
-                }
-                .foregroundStyle(.blue)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Color.blue.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-        }
     }
     
     // MARK: - Query Params Tab
     private var queryParamsTab: some View {
         VStack(spacing: 12) {
+            HStack {
+                Text("Query Parameters")
+                    .font(.subheadline.bold())
+                Spacer()
+                if !viewModel.queryParams.isEmpty {
+                    Button("Clear All") {
+                        withAnimation {
+                            viewModel.queryParams.removeAll()
+                            viewModel.syncParamsToURL()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                }
+            }
+            
             if viewModel.queryParams.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
                     Text("No Query Parameters")
                         .font(.subheadline.bold())
                         .foregroundStyle(.secondary)
-                    Text("Parameters will be appended to the URL as ?key=value")
+                    Text("Parameters are automatically appended to the URL as ?key=value")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
+                    
+                    if viewModel.url.contains("?") {
+                        Button("Import Parameters from URL") {
+                            withAnimation {
+                                viewModel.syncURLToParams()
+                            }
+                        }
+                        .font(.caption.bold())
+                        .padding(.top, 4)
+                    }
                 }
                 .padding(.vertical, 20)
             } else {
@@ -421,9 +370,12 @@ public struct RequestBuilderView: View {
                             Toggle("", isOn: $bindableItem.isEnabled)
                                 .labelsHidden()
                                 .tint(.blue)
+                                .onChange(of: bindableItem.isEnabled) {
+                                    viewModel.syncParamsToURL()
+                                }
                             
                             Text(item.key.isEmpty ? "New Parameter" : item.key)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
                                 .foregroundStyle(item.isEnabled ? .primary : .secondary)
                                 .lineLimit(1)
                             
@@ -432,40 +384,45 @@ public struct RequestBuilderView: View {
                             Button {
                                 withAnimation {
                                     viewModel.queryParams.removeAll(where: { $0.id == item.id })
+                                    viewModel.syncParamsToURL()
                                 }
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 14))
+                                    .font(.system(size: 13))
                                     .foregroundStyle(.red.opacity(0.8))
                             }
                             .buttonStyle(.plain)
                         }
                         
                         HStack(spacing: 8) {
-                            TextField("Key (e.g. page)", text: $bindableItem.key)
+                            TextField("Key (e.g. limit)", text: $bindableItem.key)
                                 .font(.system(size: 13, design: .monospaced))
-                                .padding(9)
+                                .padding(8)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .focused($isInputFocused)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.asciiCapable)
-                                .lineLimit(1)
+                                .onChange(of: bindableItem.key) {
+                                    viewModel.syncParamsToURL()
+                                }
                             
-                            TextField("Value (e.g. 1)", text: $bindableItem.value)
+                            TextField("Value (e.g. 10)", text: $bindableItem.value)
                                 .font(.system(size: 13, design: .monospaced))
-                                .padding(9)
+                                .padding(8)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .focused($isInputFocused)
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.asciiCapable)
-                                .lineLimit(1)
+                                .onChange(of: bindableItem.value) {
+                                    viewModel.syncParamsToURL()
+                                }
                         }
                     }
-                    .padding(12)
+                    .padding(10)
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -483,7 +440,115 @@ public struct RequestBuilderView: View {
                 }
                 .foregroundStyle(.blue)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, 10)
+                .background(Color.blue.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    // MARK: - Headers Tab
+    private var headersTab: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Headers")
+                    .font(.subheadline.bold())
+                Spacer()
+                if !viewModel.headers.isEmpty {
+                    Button("Clear All") {
+                        withAnimation {
+                            viewModel.headers.removeAll()
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                }
+            }
+            
+            if viewModel.headers.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "tray")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No Headers")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.secondary)
+                    Text("Add request headers such as Accept, Authorization, or Content-Type.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.vertical, 20)
+            } else {
+                ForEach(viewModel.headers) { item in
+                    @Bindable var bindableItem = item
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Toggle("", isOn: $bindableItem.isEnabled)
+                                .labelsHidden()
+                                .tint(.blue)
+                            
+                            Text(item.key.isEmpty ? "New Header" : item.key)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(item.isEnabled ? .primary : .secondary)
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            Button {
+                                withAnimation {
+                                    viewModel.headers.removeAll(where: { $0.id == item.id })
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.red.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        HStack(spacing: 8) {
+                            TextField("Header Name (e.g. Accept)", text: $bindableItem.key)
+                                .font(.system(size: 13, design: .monospaced))
+                                .padding(8)
+                                .background(Color(.tertiarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .focused($isInputFocused)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.asciiCapable)
+                            
+                            TextField("Value (e.g. application/json)", text: $bindableItem.value)
+                                .font(.system(size: 13, design: .monospaced))
+                                .padding(8)
+                                .background(Color(.tertiarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .focused($isInputFocused)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.asciiCapable)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            
+            Button {
+                withAnimation {
+                    viewModel.headers.append(RequestKeyValue(key: "", value: "", isEnabled: true))
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add Header")
+                        .font(.subheadline.bold())
+                }
+                .foregroundStyle(.blue)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
                 .background(Color.blue.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
@@ -493,40 +558,237 @@ public struct RequestBuilderView: View {
     
     // MARK: - Body Tab
     private var bodyTab: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Body Format:")
+        VStack(alignment: .leading, spacing: 12) {
+            // Body Format Selector
+            Picker("Body Format", selection: $viewModel.bodyType) {
+                ForEach(BodyType.allCases) { b in
+                    Text(b.rawValue).tag(b)
+                }
+            }
+            .pickerStyle(.segmented)
+            
+            if viewModel.bodyType == .none {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    Text("No Body Configured")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.secondary)
+                    Text("GET and HEAD requests typically do not carry a payload.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("Switch to Raw JSON") {
+                        withAnimation {
+                            viewModel.setJSONTemplate()
+                        }
+                    }
                     .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                
-                Picker("Body Type", selection: $viewModel.bodyType) {
-                    ForEach(BodyType.allCases) { b in
-                        Text(b.rawValue).tag(b)
+                    .padding(.top, 4)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 32)
+                .background(Color(.secondarySystemBackground).opacity(0.4))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                // Toolbar above text editor
+                HStack(spacing: 8) {
+                    if viewModel.bodyType == .json {
+                        Text("application/json")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.12))
+                            .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                    }
+                    
+                    Spacer()
+                    
+                    if viewModel.bodyType == .json {
+                        Button {
+                            viewModel.formatJSONBody()
+                        } label: {
+                            Label("Beautify", systemImage: "sparkles")
+                                .font(.caption.bold())
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        
+                        Button {
+                            viewModel.setJSONTemplate()
+                        } label: {
+                            Label("Template", systemImage: "curlybraces")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                    }
+                    
+                    if !viewModel.bodyText.isEmpty {
+                        Button("Clear") {
+                            viewModel.bodyText = ""
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.red)
                     }
                 }
-                .pickerStyle(.menu)
                 
-                Spacer()
+                TextEditor(text: $viewModel.bodyText)
+                    .font(.system(size: 13, design: .monospaced))
+                    .focused($isInputFocused)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
+                    .padding(8)
+                    .frame(minHeight: 180)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
             }
-            
-            TextEditor(text: $viewModel.bodyText)
-                .font(.system(size: 13, weight: .regular, design: .monospaced))
-                .focused($isInputFocused)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .keyboardType(.asciiCapable)
-                .padding(10)
-                .frame(minHeight: 180)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
         }
     }
     
-    // MARK: - Response Tab (All response status and metrics shown here cleanly)
+    // MARK: - Tests / Assertions Tab (Dynamic user-configurable test suite)
+    private var testsTab: some View {
+        VStack(spacing: 12) {
+            // Quick Presets
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button("+ Status 200") {
+                        withAnimation {
+                            viewModel.assertions.append(RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    Button("+ Status 201") {
+                        withAnimation {
+                            viewModel.assertions.append(RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "201"))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    Button("+ Time < 500ms") {
+                        withAnimation {
+                            viewModel.assertions.append(RequestAssertionItem(target: .responseTime, comparison: .lessThan, expectedValue: "500"))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    Button("+ Body contains") {
+                        withAnimation {
+                            viewModel.assertions.append(RequestAssertionItem(target: .bodyContains, comparison: .contains, expectedValue: "id"))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            
+            if viewModel.assertions.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "checkmark.shield")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No Assertions Configured")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.secondary)
+                    Text("Add assertions above to automatically validate response status, response time, or body content.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.vertical, 20)
+            } else {
+                ForEach(viewModel.assertions) { item in
+                    @Bindable var bindableItem = item
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Toggle("", isOn: $bindableItem.isEnabled)
+                                .labelsHidden()
+                                .tint(.green)
+                            
+                            Picker("Target", selection: $bindableItem.target) {
+                                ForEach(AssertionTarget.allCases) { t in
+                                    Text(t.rawValue).tag(t)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            
+                            Picker("Comparison", selection: $bindableItem.comparison) {
+                                ForEach(AssertionComparison.allCases) { c in
+                                    Text(c.rawValue).tag(c)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            
+                            Spacer()
+                            
+                            Button {
+                                withAnimation {
+                                    viewModel.assertions.removeAll(where: { $0.id == item.id })
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(.red.opacity(0.8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        
+                        HStack(spacing: 8) {
+                            Text("Expected:")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            
+                            TextField("e.g. 200 or 500", text: $bindableItem.expectedValue)
+                                .font(.system(size: 13, design: .monospaced))
+                                .padding(8)
+                                .background(Color(.tertiarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .focused($isInputFocused)
+                                .autocorrectionDisabled()
+                                .keyboardType(.asciiCapable)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            
+            Button {
+                withAnimation {
+                    viewModel.assertions.append(RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"))
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add Custom Test")
+                        .font(.subheadline.bold())
+                }
+                .foregroundStyle(.blue)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.blue.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    // MARK: - Response Tab
     private var responseTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let resp = viewModel.response {
@@ -558,20 +820,35 @@ public struct RequestBuilderView: View {
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 
-                // Assertions (if any)
+                // Assertions Results (Dynamic Evaluation)
                 if !viewModel.assertionLogs.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Assertions:")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                        let passedCount = viewModel.assertionLogs.filter { $0.isPassed }.count
+                        HStack {
+                            Text("Test Results")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(passedCount)/\(viewModel.assertionLogs.count) Passed")
+                                .font(.caption2.bold())
+                                .foregroundStyle(passedCount == viewModel.assertionLogs.count ? .green : .orange)
+                        }
                         
                         ForEach(viewModel.assertionLogs) { log in
-                            HStack(spacing: 8) {
+                            HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: log.isPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
                                     .foregroundStyle(log.isPassed ? .green : .red)
-                                Text(log.description)
-                                    .font(.caption)
-                                    .lineLimit(2)
+                                    .padding(.top, 1)
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(log.description)
+                                        .font(.caption.bold())
+                                    if let fail = log.failureReason {
+                                        Text(fail)
+                                            .font(.caption2)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
                                 Spacer()
                             }
                             .padding(8)
@@ -584,13 +861,51 @@ public struct RequestBuilderView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                // Body Content with JSON Viewer
+                // Response Body with JSON Viewer
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Response Body:")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Response Body:")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if let body = resp.body, !body.isEmpty {
+                            Button {
+                                UIPasteboard.general.string = body
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                                    .font(.caption)
+                            }
+                        }
+                    }
                     
                     JSONSyntaxView(rawJSON: resp.body ?? "")
+                }
+                
+                // Response Headers (collapsible)
+                if !resp.headers.isEmpty {
+                    DisclosureGroup("Response Headers (\(resp.headers.count))") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(resp.headers.keys.sorted()), id: \.self) { key in
+                                HStack(alignment: .top) {
+                                    Text(key)
+                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(resp.headers[key] ?? "")
+                                        .font(.system(size: 12, design: .monospaced))
+                                        .lineLimit(2)
+                                }
+                                .padding(.vertical, 2)
+                                Divider()
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    .font(.caption.bold())
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground).opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             } else {
                 ContentUnavailableView(
@@ -608,7 +923,7 @@ public struct RequestBuilderView: View {
         NavigationStack {
             Form {
                 Section("Request Name") {
-                    TextField("e.g. Get User Profile", text: $requestSaveTitle)
+                    TextField(viewModel.resolveTitle(), text: $requestSaveTitle)
                         .focused($isInputFocused)
                         .autocorrectionDisabled()
                         .keyboardType(.asciiCapable)

@@ -14,18 +14,32 @@ struct RequestDetailExecutionView: View {
         self.request = request
     }
     
+    private var headers: [SDRequestParameter] {
+        request.keyValues.filter { $0.location == .header }
+    }
+    
+    private var queryParams: [SDRequestParameter] {
+        request.keyValues.filter { $0.location == .query }
+    }
+    
     public var body: some View {
         Form {
-            Section("Request Setup") {
-                HStack(alignment: .top, spacing: 8) {
-                    Picker("Method", selection: $request.method) {
-                        ForEach(HTTPMethodType.allCases) { m in
-                            Text(m.rawValue).tag(m)
+            Section("Request") {
+                HStack(alignment: .top, spacing: 10) {
+                    if request.isHistoryItem {
+                        // Fixed method badge for history items (cannot be edited)
+                        MethodBadgeView(method: request.method)
+                            .padding(.top, 3)
+                    } else {
+                        Picker("Method", selection: $request.method) {
+                            ForEach(HTTPMethodType.allCases) { m in
+                                Text(m.rawValue).tag(m)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .padding(.top, 2)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .padding(.top, 2)
                     
                     TextField("https://api.example.com", text: $request.urlTemplate, axis: .vertical)
                         .font(.system(size: 14, design: .monospaced))
@@ -47,18 +61,33 @@ struct RequestDetailExecutionView: View {
                         if isExecuting {
                             ProgressView()
                                 .padding(.horizontal, 4)
+                        } else if request.executionHistory.isEmpty && lastResponse == nil {
+                            Label("Send Request", systemImage: "paperplane.fill")
+                                .bold()
                         } else {
-                            Label("Execute Request", systemImage: "paperplane.fill")
+                            Label("Send Again", systemImage: "arrow.clockwise")
                                 .bold()
                         }
                         Spacer()
                     }
                 }
                 .disabled(isExecuting || request.urlTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                
+                Button {
+                    AppNavigationState.shared.openInBuilder(request: request)
+                } label: {
+                    HStack {
+                        Spacer()
+                        Label("Open in Request Builder", systemImage: "arrow.up.right.square")
+                            .font(.subheadline)
+                        Spacer()
+                    }
+                }
             }
             
+            // Execution Result
             if let resp = lastResponse {
-                Section("Execution Result") {
+                Section("Latest Response") {
                     HStack(spacing: 8) {
                         StatusBadgeView(statusCode: resp.statusCode, showText: true)
                         Spacer(minLength: 4)
@@ -78,7 +107,7 @@ struct RequestDetailExecutionView: View {
                     }
                 }
             } else if let savedResult = request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt }).first {
-                Section("Saved Response from History") {
+                Section("Saved Response") {
                     HStack(spacing: 8) {
                         StatusBadgeView(statusCode: savedResult.statusCode, showText: true)
                         Spacer(minLength: 4)
@@ -99,33 +128,65 @@ struct RequestDetailExecutionView: View {
                 }
             }
             
-            Section("Parameters & Headers (\(request.keyValues.count))") {
-                if request.keyValues.isEmpty {
-                    Text("No parameters or headers")
+            // Headers Section
+            Section("Headers (\(headers.count))") {
+                if headers.isEmpty {
+                    Text("No headers configured")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(request.keyValues) { kv in
+                    ForEach(headers) { h in
                         HStack(spacing: 8) {
-                            Text(kv.location.rawValue)
-                                .font(.caption2.bold())
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(Color.secondary.opacity(0.12))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                            
-                            Text(kv.key)
-                                .font(.subheadline.bold())
+                            Text(h.key)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(h.isEnabled ? .primary : .secondary)
                                 .lineLimit(1)
                             
                             Spacer(minLength: 4)
                             
-                            Text(kv.value)
-                                .font(.caption.monospaced())
+                            Text(h.value)
+                                .font(.system(size: 13, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
                     }
+                }
+            }
+            
+            // Query Parameters Section
+            Section("Query Parameters (\(queryParams.count))") {
+                if queryParams.isEmpty {
+                    Text("No query parameters")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(queryParams) { q in
+                        HStack(spacing: 8) {
+                            Text(q.key)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(q.isEnabled ? .primary : .secondary)
+                                .lineLimit(1)
+                            
+                            Spacer(minLength: 4)
+                            
+                            Text(q.value)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+            
+            // Body Section (if present)
+            if let body = request.rawBodyContent, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Section("Body (\(request.bodyType.rawValue))") {
+                    Text(body)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
             }
             
@@ -162,13 +223,13 @@ struct RequestDetailExecutionView: View {
         }
         
         let resolvedURL = VariableResolver.resolve(text: request.urlTemplate, using: envMap)
-        var headers: [String: String] = [:]
+        var reqHeaders: [String: String] = [:]
         var queryItems: [URLQueryItem] = []
         
         for kv in request.keyValues where kv.isEnabled && !kv.key.isEmpty {
             let resVal = VariableResolver.resolve(text: kv.value, using: envMap)
             if kv.location == .header {
-                headers[kv.key] = resVal
+                reqHeaders[kv.key] = resVal
             } else if kv.location == .query {
                 queryItems.append(URLQueryItem(name: kv.key, value: resVal))
             }
@@ -179,7 +240,7 @@ struct RequestDetailExecutionView: View {
         let resp = await NativeNetworkClient.shared.execute(
             urlString: resolvedURL,
             method: request.method,
-            headers: headers,
+            headers: reqHeaders,
             queryItems: queryItems,
             body: body,
             bodyType: request.bodyType

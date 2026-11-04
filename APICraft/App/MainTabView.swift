@@ -1,12 +1,25 @@
 import SwiftUI
+import SwiftData
+
+@Observable
+final class AppNavigationState {
+    static let shared = AppNavigationState()
+    var selectedTab: Int = 0
+    var pendingLoadRequest: SDRequest?
+    
+    func openInBuilder(request: SDRequest) {
+        self.pendingLoadRequest = request
+        self.selectedTab = 0
+    }
+}
 
 public struct MainTabView: View {
-    @State private var selectedTab = 0
+    @Bindable private var navState = AppNavigationState.shared
     
     public init() {}
 
     public var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $navState.selectedTab) {
             RequestBuilderView()
                 .tabItem {
                     Label("Requests", systemImage: "paperplane.fill")
