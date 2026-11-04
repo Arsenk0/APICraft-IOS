@@ -138,9 +138,17 @@ public final class RequestBuilderViewModel {
     }
 }
 
-public struct RequestKeyValue: Identifiable {
-    public let id = UUID()
+@Observable
+public final class RequestKeyValue: Identifiable {
+    public let id: UUID
     public var key: String
     public var value: String
     public var isEnabled: Bool
+    
+    public init(id: UUID = UUID(), key: String, value: String, isEnabled: Bool = true) {
+        self.id = id
+        self.key = key
+        self.value = value
+        self.isEnabled = isEnabled
+    }
 }

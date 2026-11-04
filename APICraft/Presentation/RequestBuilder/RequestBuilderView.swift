@@ -323,8 +323,8 @@ public struct RequestBuilderView: View {
                     }
                     
                     quickSnippetButton(title: "application/json") {
-                        if let idx = viewModel.headers.firstIndex(where: { $0.key.lowercased() == "content-type" || $0.key.lowercased() == "accept" }) {
-                            viewModel.headers[idx].value = "application/json"
+                        if let existing = viewModel.headers.first(where: { $0.key.lowercased() == "content-type" || $0.key.lowercased() == "accept" }) {
+                            existing.value = "application/json"
                         } else {
                             viewModel.headers.append(RequestKeyValue(key: "Content-Type", value: "application/json", isEnabled: true))
                         }
@@ -404,10 +404,11 @@ public struct RequestBuilderView: View {
                 }
                 .padding(.vertical, 20)
             } else {
-                ForEach($viewModel.headers) { $item in
+                ForEach(viewModel.headers) { item in
+                    @Bindable var bindableItem = item
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Toggle("", isOn: $item.isEnabled)
+                            Toggle("", isOn: $bindableItem.isEnabled)
                                 .labelsHidden()
                                 .tint(.blue)
                             
@@ -419,10 +420,8 @@ public struct RequestBuilderView: View {
                             Spacer()
                             
                             Button {
-                                if let idx = viewModel.headers.firstIndex(where: { $0.id == item.id }) {
-                                    _ = withAnimation {
-                                        viewModel.headers.remove(at: idx)
-                                    }
+                                _ = withAnimation {
+                                    viewModel.headers.removeAll(where: { $0.id == item.id })
                                 }
                             } label: {
                                 Image(systemName: "trash")
@@ -433,14 +432,14 @@ public struct RequestBuilderView: View {
                         }
                         
                         HStack(spacing: 8) {
-                            TextField("Key (Accept)", text: $item.key)
+                            TextField("Key (Accept)", text: $bindableItem.key)
                                 .font(.system(size: 13, design: .monospaced))
                                 .padding(9)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .focused($isInputFocused)
                             
-                            TextField("Value (application/json)", text: $item.value)
+                            TextField("Value (application/json)", text: $bindableItem.value)
                                 .font(.system(size: 13, design: .monospaced))
                                 .padding(9)
                                 .background(Color(.tertiarySystemBackground))
@@ -492,10 +491,11 @@ public struct RequestBuilderView: View {
                 }
                 .padding(.vertical, 20)
             } else {
-                ForEach($viewModel.queryParams) { $item in
+                ForEach(viewModel.queryParams) { item in
+                    @Bindable var bindableItem = item
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Toggle("", isOn: $item.isEnabled)
+                            Toggle("", isOn: $bindableItem.isEnabled)
                                 .labelsHidden()
                                 .tint(.blue)
                             
@@ -507,10 +507,8 @@ public struct RequestBuilderView: View {
                             Spacer()
                             
                             Button {
-                                if let idx = viewModel.queryParams.firstIndex(where: { $0.id == item.id }) {
-                                    _ = withAnimation {
-                                        viewModel.queryParams.remove(at: idx)
-                                    }
+                                _ = withAnimation {
+                                    viewModel.queryParams.removeAll(where: { $0.id == item.id })
                                 }
                             } label: {
                                 Image(systemName: "trash")
@@ -521,14 +519,14 @@ public struct RequestBuilderView: View {
                         }
                         
                         HStack(spacing: 8) {
-                            TextField("Параметр (напр. page)", text: $item.key)
+                            TextField("Параметр (напр. page)", text: $bindableItem.key)
                                 .font(.system(size: 13, design: .monospaced))
                                 .padding(9)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .focused($isInputFocused)
                             
-                            TextField("Значення (напр. 1)", text: $item.value)
+                            TextField("Значення (напр. 1)", text: $bindableItem.value)
                                 .font(.system(size: 13, design: .monospaced))
                                 .padding(9)
                                 .background(Color(.tertiarySystemBackground))
