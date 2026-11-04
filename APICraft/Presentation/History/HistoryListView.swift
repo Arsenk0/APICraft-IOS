@@ -68,11 +68,7 @@ public struct HistoryListView: View {
                     }
                 }
             }
-            .confirmationDialog(
-                "Clear All History?",
-                isPresented: $showingClearConfirmation,
-                titleVisibility: .visible
-            ) {
+            .alert("Clear All History?", isPresented: $showingClearConfirmation) {
                 Button("Clear History", role: .destructive) {
                     clearAllHistory()
                 }

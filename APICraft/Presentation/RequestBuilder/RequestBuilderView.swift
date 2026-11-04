@@ -81,39 +81,21 @@ public struct RequestBuilderView: View {
                             .padding(.horizontal, 2)
                         }
                         
-                        // Adaptive URL Input Field with Scheme Selector
-                        HStack(alignment: .top, spacing: 8) {
-                            Menu {
-                                Button("https://") {
-                                    setURLScheme("https://")
-                                }
-                                Button("http://") {
-                                    setURLScheme("http://")
-                                }
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: viewModel.url.hasPrefix("https://") ? "lock.fill" : "globe")
-                                        .font(.system(size: 11, weight: .semibold))
-                                    Text(viewModel.url.hasPrefix("http://") ? "HTTP" : "HTTPS")
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color.blue.opacity(0.12))
-                                .foregroundStyle(.blue)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.top, 2)
+                        // Clean URL Input Field
+                        HStack(alignment: .center, spacing: 8) {
+                            Image(systemName: viewModel.url.lowercased().hasPrefix("https://") ? "lock.fill" : (viewModel.url.lowercased().hasPrefix("http://") ? "lock.slash" : "globe"))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(viewModel.url.lowercased().hasPrefix("https://") ? .green : .secondary)
+                                .padding(.leading, 10)
                             
-                            TextField("api.example.com/v1/resource", text: $viewModel.url, axis: .vertical)
+                            TextField("https://api.example.com/v1/resource", text: $viewModel.url, axis: .vertical)
                                 .font(.system(size: 14, design: .monospaced))
                                 .autocorrectionDisabled()
                                 .textInputAutocapitalization(.never)
                                 .keyboardType(.asciiCapable)
                                 .focused($isInputFocused)
-                                .lineLimit(1...4)
-                                .padding(.vertical, 4)
+                                .lineLimit(1...3)
+                                .padding(.vertical, 8)
                             
                             if !viewModel.url.isEmpty {
                                 Button {
@@ -124,7 +106,7 @@ public struct RequestBuilderView: View {
                                         .foregroundStyle(.tertiary)
                                 }
                                 .buttonStyle(.plain)
-                                .padding(.top, 6)
+                                .padding(.trailing, 8)
                             } else if UIPasteboard.general.hasStrings {
                                 Button {
                                     if let pasteString = UIPasteboard.general.string {
@@ -132,20 +114,21 @@ public struct RequestBuilderView: View {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     }
                                 } label: {
-                                    Image(systemName: "doc.on.clipboard")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.blue)
+                                    Text("Paste")
+                                        .font(.caption2.bold())
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.primary.opacity(0.08))
+                                        .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
-                                .padding(.top, 6)
+                                .padding(.trailing, 8)
                             }
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
                         .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                         
-                        // Send Request Hero Button
+                        // Execute Request Button
                         Button {
                             isInputFocused = false
                             Task {
@@ -203,7 +186,7 @@ public struct RequestBuilderView: View {
                     )
                     .padding(.horizontal, 16)
                     
-                    // 3. Custom Segmented Navigation Bar (Params, Headers, Body, Tests, Response)
+                    // 3. Segmented Navigation Bar (All tabs fit neatly without truncation)
                     customTabBar
                         .padding(.horizontal, 16)
                     
@@ -262,30 +245,18 @@ public struct RequestBuilderView: View {
         }
     }
     
-    private func setURLScheme(_ scheme: String) {
-        if viewModel.url.hasPrefix("https://") {
-            viewModel.url = scheme + viewModel.url.dropFirst("https://".count)
-        } else if viewModel.url.hasPrefix("http://") {
-            viewModel.url = scheme + viewModel.url.dropFirst("http://".count)
-        } else {
-            viewModel.url = scheme + viewModel.url
-        }
-    }
-    
-    // MARK: - Custom Tab Bar
+    // MARK: - Custom Tab Bar (Fits neatly on all device widths)
     private var customTabBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                tabButton(title: "Params", count: viewModel.queryParams.count, index: 0)
-                tabButton(title: "Headers", count: viewModel.headers.count, index: 1)
-                tabButton(title: "Body", count: viewModel.bodyType == .none ? nil : 1, index: 2)
-                tabButton(title: "Tests", count: viewModel.assertions.count, index: 3)
-                tabButton(title: "Response", count: viewModel.response != nil ? 1 : nil, index: 4)
-            }
-            .padding(4)
+        HStack(spacing: 3) {
+            tabButton(title: "Params", count: viewModel.queryParams.count, index: 0)
+            tabButton(title: "Headers", count: viewModel.headers.count, index: 1)
+            tabButton(title: "Body", count: viewModel.bodyType == .none ? nil : 1, index: 2)
+            tabButton(title: "Tests", count: viewModel.assertions.count, index: 3)
+            tabButton(title: "Response", count: viewModel.response != nil ? 1 : nil, index: 4)
         }
-        .background(Color(.secondarySystemBackground).opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(3)
+        .background(Color(.secondarySystemBackground).opacity(0.8))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
     
     private func tabButton(title: String, count: Int?, index: Int) -> some View {
@@ -294,23 +265,24 @@ public struct RequestBuilderView: View {
                 selectedTab = index
             }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: 13, weight: selectedTab == index ? .bold : .medium))
+                    .font(.system(size: 12, weight: selectedTab == index ? .bold : .medium))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 
                 if let count = count, count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 5)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(selectedTab == index ? Color.blue : Color.secondary.opacity(0.25))
                         .foregroundStyle(selectedTab == index ? Color.white : Color.primary)
                         .clipShape(Capsule())
                 }
             }
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
-            .padding(.horizontal, 10)
             .background(selectedTab == index ? Color(.systemBackground) : Color.clear)
             .foregroundStyle(selectedTab == index ? Color.primary : Color.secondary)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -358,73 +330,59 @@ public struct RequestBuilderView: View {
                             }
                         }
                         .font(.caption.bold())
-                        .padding(.top, 4)
                     }
                 }
-                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
             } else {
                 ForEach(viewModel.queryParams) { item in
                     @Bindable var bindableItem = item
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Toggle("", isOn: $bindableItem.isEnabled)
-                                .labelsHidden()
-                                .tint(.blue)
-                                .onChange(of: bindableItem.isEnabled) {
-                                    viewModel.syncParamsToURL()
-                                }
-                            
-                            Text(item.key.isEmpty ? "New Parameter" : item.key)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(item.isEnabled ? .primary : .secondary)
-                                .lineLimit(1)
-                            
-                            Spacer()
-                            
-                            Button {
-                                withAnimation {
-                                    viewModel.queryParams.removeAll(where: { $0.id == item.id })
-                                    viewModel.syncParamsToURL()
-                                }
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.red.opacity(0.8))
+                    HStack(spacing: 8) {
+                        Toggle("", isOn: $bindableItem.isEnabled)
+                            .labelsHidden()
+                            .tint(.blue)
+                            .onChange(of: bindableItem.isEnabled) {
+                                viewModel.syncParamsToURL()
                             }
-                            .buttonStyle(.plain)
-                        }
                         
-                        HStack(spacing: 8) {
-                            TextField("Key (e.g. limit)", text: $bindableItem.key)
-                                .font(.system(size: 13, design: .monospaced))
-                                .padding(8)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .focused($isInputFocused)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.asciiCapable)
-                                .onChange(of: bindableItem.key) {
-                                    viewModel.syncParamsToURL()
-                                }
-                            
-                            TextField("Value (e.g. 10)", text: $bindableItem.value)
-                                .font(.system(size: 13, design: .monospaced))
-                                .padding(8)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .focused($isInputFocused)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.asciiCapable)
-                                .onChange(of: bindableItem.value) {
-                                    viewModel.syncParamsToURL()
-                                }
+                        TextField("Key", text: $bindableItem.key)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.asciiCapable)
+                            .onChange(of: bindableItem.key) {
+                                viewModel.syncParamsToURL()
+                            }
+                        
+                        TextField("Value", text: $bindableItem.value)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.asciiCapable)
+                            .onChange(of: bindableItem.value) {
+                                viewModel.syncParamsToURL()
+                            }
+                        
+                        Button {
+                            withAnimation {
+                                viewModel.queryParams.removeAll(where: { $0.id == item.id })
+                                viewModel.syncParamsToURL()
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.red.opacity(0.8))
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(10)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             
@@ -468,13 +426,13 @@ public struct RequestBuilderView: View {
             
             if viewModel.headers.isEmpty {
                 VStack(spacing: 6) {
-                    Image(systemName: "tray")
+                    Image(systemName: "list.bullet.rectangle")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
-                    Text("No Headers")
+                    Text("No Headers Configured")
                         .font(.subheadline.bold())
                         .foregroundStyle(.secondary)
-                    Text("Add request headers such as Accept, Authorization, or Content-Type.")
+                    Text("Standard HTTP headers like Content-Type or Authorization can be defined here.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -483,16 +441,11 @@ public struct RequestBuilderView: View {
             } else {
                 ForEach(viewModel.headers) { item in
                     @Bindable var bindableItem = item
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Toggle("", isOn: $bindableItem.isEnabled)
                                 .labelsHidden()
                                 .tint(.blue)
-                            
-                            Text(item.key.isEmpty ? "New Header" : item.key)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(item.isEnabled ? .primary : .secondary)
-                                .lineLimit(1)
                             
                             Spacer()
                             
@@ -654,7 +607,7 @@ public struct RequestBuilderView: View {
         }
     }
     
-    // MARK: - Tests / Assertions Tab (Dynamic user-configurable test suite)
+    // MARK: - Tests / Assertions Tab (Clean, non-wrapping layout)
     private var testsTab: some View {
         VStack(spacing: 12) {
             // Quick Presets
@@ -711,27 +664,54 @@ public struct RequestBuilderView: View {
             } else {
                 ForEach(viewModel.assertions) { item in
                     @Bindable var bindableItem = item
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
                             Toggle("", isOn: $bindableItem.isEnabled)
                                 .labelsHidden()
                                 .tint(.green)
                             
-                            Picker("Target", selection: $bindableItem.target) {
-                                ForEach(AssertionTarget.allCases) { t in
-                                    Text(t.rawValue).tag(t)
+                            Menu {
+                                Picker("Target", selection: $bindableItem.target) {
+                                    ForEach(AssertionTarget.allCases) { t in
+                                        Text(t.rawValue).tag(t)
+                                    }
                                 }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(bindableItem.target.rawValue)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .lineLimit(1)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 9))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color(.tertiarySystemBackground))
+                                .foregroundStyle(.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
+                            .fixedSize()
                             
-                            Picker("Comparison", selection: $bindableItem.comparison) {
-                                ForEach(AssertionComparison.allCases) { c in
-                                    Text(c.rawValue).tag(c)
+                            Menu {
+                                Picker("Comparison", selection: $bindableItem.comparison) {
+                                    ForEach(AssertionComparison.allCases) { c in
+                                        Text(c.rawValue).tag(c)
+                                    }
                                 }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(bindableItem.comparison.rawValue)
+                                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 9))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color(.tertiarySystemBackground))
+                                .foregroundStyle(.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
+                            .fixedSize()
                             
                             Spacer()
                             
@@ -743,6 +723,7 @@ public struct RequestBuilderView: View {
                                 Image(systemName: "trash")
                                     .font(.system(size: 13))
                                     .foregroundStyle(.red.opacity(0.8))
+                                    .padding(6)
                             }
                             .buttonStyle(.plain)
                         }
@@ -820,6 +801,29 @@ public struct RequestBuilderView: View {
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 
+                // Error Card (if any failure occurred)
+                if let err = resp.error, !err.isEmpty {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.title3)
+                            .padding(.top, 2)
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Request Failed")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.red)
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.red.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                
                 // Assertions Results (Dynamic Evaluation)
                 if !viewModel.assertionLogs.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -861,23 +865,11 @@ public struct RequestBuilderView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                // Response Body with JSON Viewer
+                // Response Body Viewer (Clean with single Copy button inside card)
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Response Body:")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if let body = resp.body, !body.isEmpty {
-                            Button {
-                                UIPasteboard.general.string = body
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
-                                    .font(.caption)
-                            }
-                        }
-                    }
+                    Text("Response Body")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
                     
                     JSONSyntaxView(rawJSON: resp.body ?? "")
                 }
@@ -900,54 +892,58 @@ public struct RequestBuilderView: View {
                                 Divider()
                             }
                         }
-                        .padding(.top, 4)
+                        .padding(.top, 8)
                     }
                     .font(.caption.bold())
                     .padding(12)
-                    .background(Color(.secondarySystemBackground).opacity(0.6))
+                    .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             } else {
-                ContentUnavailableView(
-                    "No Response Yet",
-                    systemImage: "paperplane.circle",
-                    description: Text("Tap 'Send Request' above to execute this request and view response data.")
-                )
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.up.circle.badge.clock")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text("No Response Yet")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.secondary)
+                    Text("Tap 'Send Request' to execute this request and view real-time metrics, tests, headers, and body.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
             }
         }
     }
     
-    // MARK: - Save Sheet
+    // MARK: - Save to Collection Sheet
     private var saveToCollectionSheet: some View {
         NavigationStack {
             Form {
-                Section("Request Name") {
-                    TextField(viewModel.resolveTitle(), text: $requestSaveTitle)
+                Section("Request Title") {
+                    TextField("Title", text: $requestSaveTitle)
                         .focused($isInputFocused)
-                        .autocorrectionDisabled()
-                        .keyboardType(.asciiCapable)
                 }
                 
                 Section("Collection") {
                     if collections.isEmpty {
-                        Text("No collections created yet.")
+                        Text("No collections available. Create one below.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                        Button("Create New Collection") {
-                            showingNewColAlert = true
-                        }
                     } else {
-                        Picker("Choose Collection", selection: $selectedCollectionForSave) {
+                        Picker("Select Collection", selection: $selectedCollectionForSave) {
                             ForEach(collections) { col in
-                                Text(col.name).tag(Optional(col))
+                                Text(col.name).tag(col as SDCollection?)
                             }
                         }
-                        
-                        Button {
-                            showingNewColAlert = true
-                        } label: {
-                            Label("Create Another Collection", systemImage: "plus")
-                        }
+                    }
+                    
+                    Button {
+                        showingNewColAlert = true
+                    } label: {
+                        Label("New Collection", systemImage: "plus")
                     }
                 }
             }
@@ -961,37 +957,27 @@ public struct RequestBuilderView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if let targetCol = selectedCollectionForSave ?? collections.first {
-                            viewModel.saveToCollection(
-                                collection: targetCol,
-                                customTitle: requestSaveTitle,
-                                context: modelContext
-                            )
-                            showingSaveSheet = false
+                        if let col = selectedCollectionForSave {
+                            viewModel.saveToCollection(collection: col, customTitle: requestSaveTitle, context: modelContext)
                         }
+                        showingSaveSheet = false
                     }
-                    .disabled(collections.isEmpty && selectedCollectionForSave == nil)
+                    .disabled(requestSaveTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedCollectionForSave == nil)
                 }
             }
             .alert("New Collection", isPresented: $showingNewColAlert) {
                 TextField("Collection Name", text: $newColName)
-                    .autocorrectionDisabled()
-                    .keyboardType(.asciiCapable)
                 Button("Create") {
-                    let trimmed = newColName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        let newCol = SDCollection(name: trimmed)
-                        modelContext.insert(newCol)
-                        try? modelContext.save()
-                        selectedCollectionForSave = newCol
-                        newColName = ""
-                    }
+                    let col = SDCollection(name: newColName)
+                    modelContext.insert(col)
+                    try? modelContext.save()
+                    selectedCollectionForSave = col
+                    newColName = ""
                 }
                 Button("Cancel", role: .cancel) {
                     newColName = ""
                 }
             }
         }
-        .presentationDetents([.medium])
     }
 }

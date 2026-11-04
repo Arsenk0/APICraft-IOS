@@ -19,8 +19,13 @@ public actor NativeNetworkClient {
         body: String?,
         bodyType: BodyType
     ) async -> NetworkResponse {
-        guard var components = URLComponents(string: urlString) else {
-            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Invalid URL")
+        var sanitizedURLString = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sanitizedURLString.isEmpty && !sanitizedURLString.lowercased().hasPrefix("http://") && !sanitizedURLString.lowercased().hasPrefix("https://") {
+            sanitizedURLString = "https://" + sanitizedURLString
+        }
+        
+        guard var components = URLComponents(string: sanitizedURLString) else {
+            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Invalid URL format")
         }
         
         if !queryItems.isEmpty {
@@ -30,7 +35,7 @@ public actor NativeNetworkClient {
         }
         
         guard let url = components.url else {
-            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Unable to build URL")
+            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Unable to construct valid URL")
         }
         
         var request = URLRequest(url: url)
@@ -53,7 +58,7 @@ public actor NativeNetworkClient {
             let duration = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: duration, sizeBytes: data.count, error: "Invalid response type")
+                return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: duration, sizeBytes: data.count, error: "Invalid server response type")
             }
             
             var respHeaders: [String: String] = [:]

@@ -29,7 +29,7 @@ struct RequestDetailExecutionView: View {
                     if request.isHistoryItem {
                         // Fixed method badge for history items (cannot be edited)
                         MethodBadgeView(method: request.method)
-                            .padding(.top, 3)
+                            .padding(.top, 4)
                     } else {
                         Picker("Method", selection: $request.method) {
                             ForEach(HTTPMethodType.allCases) { m in
@@ -50,39 +50,60 @@ struct RequestDetailExecutionView: View {
                         .lineLimit(1...3)
                 }
                 
-                Button {
-                    isFocused = false
-                    Task {
-                        await executeRequest()
-                    }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if isExecuting {
-                            ProgressView()
-                                .padding(.horizontal, 4)
-                        } else if request.executionHistory.isEmpty && lastResponse == nil {
-                            Label("Send Request", systemImage: "paperplane.fill")
-                                .bold()
-                        } else {
-                            Label("Send Again", systemImage: "arrow.clockwise")
-                                .bold()
+                VStack(spacing: 8) {
+                    Button {
+                        isFocused = false
+                        Task {
+                            await executeRequest()
                         }
-                        Spacer()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isExecuting {
+                                ProgressView()
+                                    .tint(.white)
+                            } else if request.executionHistory.isEmpty && lastResponse == nil {
+                                Image(systemName: "paperplane.fill")
+                                Text("Send Request")
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                Text("Send Again")
+                            }
+                        }
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.blue, Color.cyan.opacity(0.8)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .shadow(color: Color.blue.opacity(0.2), radius: 3, y: 2)
                     }
-                }
-                .disabled(isExecuting || request.urlTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                
-                Button {
-                    AppNavigationState.shared.openInBuilder(request: request)
-                } label: {
-                    HStack {
-                        Spacer()
-                        Label("Open in Request Builder", systemImage: "arrow.up.right.square")
-                            .font(.subheadline)
-                        Spacer()
+                    .disabled(isExecuting || request.urlTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(.plain)
+                    
+                    Button {
+                        AppNavigationState.shared.openInBuilder(request: request)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.right.square")
+                            Text("Open in Request Builder")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(Color.primary.opacity(0.06))
+                        .foregroundStyle(.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
+                    .buttonStyle(.plain)
                 }
+                .listRowSeparator(.hidden)
+                .padding(.vertical, 4)
             }
             
             // Execution Result
@@ -101,10 +122,14 @@ struct RequestDetailExecutionView: View {
                             .lineLimit(1)
                     }
                     
-                    if let body = resp.body, !body.isEmpty {
-                        JSONSyntaxView(rawJSON: body)
-                            .padding(.top, 4)
+                    if let err = resp.error {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
+                    
+                    JSONSyntaxView(rawJSON: resp.body ?? "")
+                        .padding(.top, 4)
                 }
             } else if let savedResult = request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt }).first {
                 Section("Saved Response") {
@@ -248,16 +273,17 @@ struct RequestDetailExecutionView: View {
         
         self.lastResponse = resp
         
+        // Save execution to SwiftData
         let exec = SDExecutionResult(
             statusCode: resp.statusCode,
             responseDurationMs: resp.durationMs,
             responseBodySize: resp.sizeBytes,
             responseBody: resp.body,
-            isAllAssertionsPassed: resp.statusCode >= 200 && resp.statusCode < 300
+            isAllAssertionsPassed: resp.statusCode >= 200 && resp.statusCode < 400
         )
         exec.request = request
-        request.executionHistory.append(exec)
         modelContext.insert(exec)
+        request.executionHistory.append(exec)
         try? modelContext.save()
     }
 }
