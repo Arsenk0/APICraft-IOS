@@ -16,13 +16,19 @@ public struct RequestBuilderView: View {
     @Query(sort: \SDCollection.createdAt, order: .reverse) private var collections: [SDCollection]
     
     @State private var viewModel = RequestBuilderViewModel()
-    @State private var selectedTab = 0 // 0: Params, 1: Headers, 2: Body, 3: Tests, 4: Response
+    @State private var selectedTab = 0 // 0: Params, 1: Auth, 2: Headers, 3: Body, 4: Tests, 5: Response
     @State private var showingSaveSheet = false
     @State private var requestSaveTitle = ""
     @State private var selectedCollectionForSave: SDCollection?
     @State private var showingNewColAlert = false
     @State private var newColName = ""
     @FocusState private var isInputFocused: Bool
+    
+    // cURL State
+    @State private var showingCURLImportSheet = false
+    @State private var curlImportText = ""
+    @State private var curlImportError: String?
+    @State private var showCopiedToast = false
     
     private let starterPresets: [APIPreset] = [
         APIPreset(name: "Todos", method: .get, url: "https://jsonplaceholder.typicode.com/todos/1", description: "GET single todo item", sampleBody: nil),
@@ -37,7 +43,7 @@ public struct RequestBuilderView: View {
     public init() {}
     
     private var activeTab: Int {
-        if selectedTab == 4 && viewModel.response == nil {
+        if selectedTab == 5 && viewModel.response == nil {
             return 0
         }
         return selectedTab
@@ -233,7 +239,7 @@ public struct RequestBuilderView: View {
                             Task {
                                 await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    selectedTab = 4 // Auto-switch to "Response"
+                                    selectedTab = 5 // Auto-switch to "Response"
                                 }
                                 let haptic = UINotificationFeedbackGenerator()
                                 if let code = viewModel.response?.statusCode, code >= 200 && code < 400 {
@@ -285,7 +291,7 @@ public struct RequestBuilderView: View {
                     )
                     .padding(.horizontal, 16)
                     
-                    // 3. Segmented Navigation Bar (Only shows Response tab when there IS a response)
+                    // 3. Segmented Navigation Bar (Fits all tabs and dynamically reveals Response)
                     customTabBar
                         .padding(.horizontal, 16)
                     
@@ -295,12 +301,14 @@ public struct RequestBuilderView: View {
                         case 0:
                             queryParamsTab
                         case 1:
-                            headersTab
+                            authTab
                         case 2:
-                            bodyTab
+                            headersTab
                         case 3:
-                            testsTab
+                            bodyTab
                         case 4:
+                            testsTab
+                        case 5:
                             responseTab
                         default:
                             queryParamsTab
@@ -321,6 +329,24 @@ public struct RequestBuilderView: View {
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("APICraft")
             .navigationBarTitleDisplayMode(.inline)
+            .overlay(alignment: .top) {
+                if showCopiedToast {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("cURL copied to clipboard")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                    .padding(.top, 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -339,14 +365,45 @@ public struct RequestBuilderView: View {
                     }
                 }
                 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            let curl = viewModel.exportAsCURL()
+                            UIPasteboard.general.string = curl
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            withAnimation(.spring) {
+                                showCopiedToast = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                withAnimation(.easeInOut) {
+                                    showCopiedToast = false
+                                }
+                            }
+                        } label: {
+                            Label("Copy as cURL", systemImage: "doc.on.doc")
+                        }
+                        
+                        Button {
+                            let clip = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                            curlImportText = clip.lowercased().hasPrefix("curl") ? clip : ""
+                            curlImportError = nil
+                            showingCURLImportSheet = true
+                        } label: {
+                            Label("Import cURL...", systemImage: "square.and.arrow.down")
+                        }
+                    } label: {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 15, weight: .medium))
+                    }
+                    
                     Button {
                         isInputFocused = false
                         requestSaveTitle = viewModel.title.isEmpty ? viewModel.resolveTitle() : viewModel.title
                         selectedCollectionForSave = collections.first
                         showingSaveSheet = true
                     } label: {
-                        Label("Save", systemImage: "folder.badge.plus")
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 15, weight: .medium))
                     }
                 }
                 
@@ -363,17 +420,20 @@ public struct RequestBuilderView: View {
             .sheet(isPresented: $showingSaveSheet) {
                 saveToCollectionSheet
             }
+            .sheet(isPresented: $showingCURLImportSheet) {
+                curlImportSheet
+            }
             .onAppear {
                 if let pending = AppNavigationState.shared.pendingLoadRequest {
                     viewModel.loadFrom(request: pending)
-                    selectedTab = pending.bodyType != .none ? 2 : 0
+                    selectedTab = pending.bodyType != .none ? 3 : 0
                     AppNavigationState.shared.pendingLoadRequest = nil
                 }
             }
             .onChange(of: AppNavigationState.shared.pendingLoadRequest) { _, newReq in
                 if let req = newReq {
                     viewModel.loadFrom(request: req)
-                    selectedTab = req.bodyType != .none ? 2 : 0
+                    selectedTab = req.bodyType != .none ? 3 : 0
                     AppNavigationState.shared.pendingLoadRequest = nil
                 }
             }
@@ -394,13 +454,14 @@ public struct RequestBuilderView: View {
     
     // MARK: - Custom Tab Bar (Dynamically displays Response tab ONLY when response exists)
     private var customTabBar: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2) {
             tabButton(title: "Params", count: viewModel.queryParams.count, index: 0)
-            tabButton(title: "Headers", count: viewModel.headers.count, index: 1)
-            tabButton(title: "Body", count: viewModel.bodyType == .none ? nil : 1, index: 2)
-            tabButton(title: "Tests", count: viewModel.assertions.count, index: 3)
+            tabButton(title: "Auth", count: viewModel.authType == .none ? nil : 1, index: 1)
+            tabButton(title: "Headers", count: viewModel.headers.count, index: 2)
+            tabButton(title: "Body", count: viewModel.bodyType == .none ? nil : 1, index: 3)
+            tabButton(title: "Tests", count: viewModel.assertions.count, index: 4)
             if viewModel.response != nil {
-                tabButton(title: "Response", count: nil, index: 4)
+                tabButton(title: "Response", count: nil, index: 5)
             }
         }
         .padding(3)
@@ -416,13 +477,13 @@ public struct RequestBuilderView: View {
         } label: {
             HStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: 12, weight: selectedTab == index ? .bold : .medium))
+                    .font(.system(size: 11, weight: selectedTab == index ? .bold : .medium))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
                 
                 if let count = count, count > 0 {
                     Text("\(count)")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(selectedTab == index ? Color.blue : Color.secondary.opacity(0.25))
@@ -555,6 +616,153 @@ public struct RequestBuilderView: View {
         }
     }
     
+    // MARK: - Auth Tab
+    private var authTab: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Authorization Type")
+                    .font(.subheadline.bold())
+                Spacer()
+            }
+            
+            Picker("Auth Type", selection: $viewModel.authType) {
+                ForEach(RequestAuthType.allCases) { type in
+                    Text(type.rawValue).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+            
+            switch viewModel.authType {
+            case .none:
+                VStack(spacing: 8) {
+                    Image(systemName: "lock.open")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No Authorization")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.secondary)
+                    Text("This request will not carry any credentials or Authorization headers.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+                .background(Color(.secondarySystemBackground).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+            case .bearer:
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Bearer Token")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    
+                    TextField("Enter Token (or {{token}})", text: $viewModel.bearerToken, axis: .vertical)
+                        .font(.system(size: 13, design: .monospaced))
+                        .padding(10)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .focused($isInputFocused)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
+                        .lineLimit(1...4)
+                    
+                    Text("The token will be added as: Authorization: Bearer <token>")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color(.secondarySystemBackground).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+            case .basic:
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Basic Authentication")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    
+                    HStack(spacing: 8) {
+                        Text("Username:")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 70, alignment: .leading)
+                        
+                        TextField("admin", text: $viewModel.basicUsername)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.asciiCapable)
+                    }
+                    
+                    HStack(spacing: 8) {
+                        Text("Password:")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 70, alignment: .leading)
+                        
+                        SecureField("password", text: $viewModel.basicPassword)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                    
+                    Text("Credentials will be Base64-encoded into Authorization: Basic <base64>")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color(.secondarySystemBackground).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+            case .apiKey:
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("API Key")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    
+                    Picker("Add To", selection: $viewModel.apiKeyLocation) {
+                        ForEach(APIKeyLocation.allCases) { loc in
+                            Text(loc.rawValue).tag(loc)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    HStack(spacing: 8) {
+                        TextField("Key Name (e.g. X-API-Key)", text: $viewModel.apiKeyName)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        
+                        TextField("Value", text: $viewModel.apiKeyValue)
+                            .font(.system(size: 13, design: .monospaced))
+                            .padding(8)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .focused($isInputFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+                .padding(12)
+                .background(Color(.secondarySystemBackground).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+    
     // MARK: - Headers Tab
     private var headersTab: some View {
         VStack(spacing: 12) {
@@ -581,7 +789,7 @@ public struct RequestBuilderView: View {
                     Text("No Headers Configured")
                         .font(.subheadline.bold())
                         .foregroundStyle(.secondary)
-                    Text("Standard HTTP headers like Content-Type or Authorization can be defined here.")
+                    Text("Standard HTTP headers like Content-Type or Custom-Header can be defined here.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -1154,6 +1362,71 @@ public struct RequestBuilderView: View {
                 }
                 Button("Cancel", role: .cancel) {
                     newColName = ""
+                }
+            }
+        }
+    }
+    
+    // MARK: - cURL Import Sheet
+    private var curlImportSheet: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Text("Paste any cURL command from Chrome DevTools, Postman, or terminal:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                
+                TextEditor(text: $curlImportText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(8)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.horizontal)
+                    .frame(minHeight: 180)
+                
+                if let err = curlImportError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal)
+                }
+                
+                Button {
+                    if let paste = UIPasteboard.general.string {
+                        curlImportText = paste
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                } label: {
+                    Label("Paste from Clipboard", systemImage: "doc.on.clipboard")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.bordered)
+                
+                Spacer()
+            }
+            .padding(.top)
+            .navigationTitle("Import cURL")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingCURLImportSheet = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        if viewModel.importFromCURL(curlImportText) {
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            showingCURLImportSheet = false
+                            selectedTab = viewModel.bodyType != .none ? 3 : 0
+                        } else {
+                            curlImportError = "Invalid cURL command. Make sure it starts with 'curl'."
+                            UINotificationFeedbackGenerator().notificationOccurred(.error)
+                        }
+                    }
+                    .disabled(curlImportText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .font(.headline)
                 }
             }
         }
