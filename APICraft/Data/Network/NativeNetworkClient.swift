@@ -25,7 +25,7 @@ public actor NativeNetworkClient {
         }
         
         guard var components = URLComponents(string: sanitizedURLString) else {
-            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Invalid URL format")
+            return NetworkResponse(statusCode: 0, headers: [:], cookies: [], body: nil, durationMs: 0, sizeBytes: 0, error: "Invalid URL format")
         }
         
         if !queryItems.isEmpty {
@@ -35,7 +35,7 @@ public actor NativeNetworkClient {
         }
         
         guard let url = components.url else {
-            return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: 0, sizeBytes: 0, error: "Unable to construct valid URL")
+            return NetworkResponse(statusCode: 0, headers: [:], cookies: [], body: nil, durationMs: 0, sizeBytes: 0, error: "Unable to construct valid URL")
         }
         
         var request = URLRequest(url: url)
@@ -49,6 +49,8 @@ public actor NativeNetworkClient {
             request.httpBody = body.data(using: .utf8)
             if bodyType == .json && request.value(forHTTPHeaderField: "Content-Type") == nil {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            } else if bodyType == .urlEncoded && request.value(forHTTPHeaderField: "Content-Type") == nil {
+                request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
             }
         }
         
@@ -58,7 +60,7 @@ public actor NativeNetworkClient {
             let duration = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                return NetworkResponse(statusCode: 0, headers: [:], body: nil, durationMs: duration, sizeBytes: data.count, error: "Invalid server response type")
+                return NetworkResponse(statusCode: 0, headers: [:], cookies: [], body: nil, durationMs: duration, sizeBytes: data.count, error: "Invalid server response type")
             }
             
             var respHeaders: [String: String] = [:]
@@ -66,11 +68,28 @@ public actor NativeNetworkClient {
                 respHeaders[String(describing: key)] = String(describing: val)
             }
             
+            var cookiesList: [ResponseCookie] = []
+            if let responseUrl = httpResponse.url {
+                let httpCookies = HTTPCookie.cookies(withResponseHeaderFields: respHeaders, for: responseUrl)
+                cookiesList = httpCookies.map { cookie in
+                    ResponseCookie(
+                        name: cookie.name,
+                        value: cookie.value,
+                        domain: cookie.domain,
+                        path: cookie.path,
+                        expiresDate: cookie.expiresDate,
+                        isSecure: cookie.isSecure,
+                        isHTTPOnly: cookie.isHTTPOnly
+                    )
+                }
+            }
+            
             let bodyString = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
             
             return NetworkResponse(
                 statusCode: httpResponse.statusCode,
                 headers: respHeaders,
+                cookies: cookiesList,
                 body: bodyString,
                 durationMs: duration,
                 sizeBytes: data.count
@@ -80,6 +99,7 @@ public actor NativeNetworkClient {
             return NetworkResponse(
                 statusCode: 0,
                 headers: [:],
+                cookies: [],
                 body: nil,
                 durationMs: duration,
                 sizeBytes: 0,

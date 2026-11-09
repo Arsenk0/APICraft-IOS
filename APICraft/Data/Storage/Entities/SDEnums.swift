@@ -36,6 +36,8 @@ public enum AssertionTarget: String, Codable, CaseIterable, Identifiable {
     case responseTime = "Response Time (ms)"
     case header = "Header"
     case bodyContains = "Body Contains"
+    case jsonKeyExists = "JSON Key Exists"
+    case jsonValue = "JSON Value"
     
     public var id: String { rawValue }
 }

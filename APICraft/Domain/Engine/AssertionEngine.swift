@@ -1,13 +1,19 @@
 import Foundation
 
-public struct AssertionEvaluationResult: Identifiable {
-    public let id = UUID()
-    public let description: String
-    public let isPassed: Bool
-    public let failureReason: String?
+struct AssertionEvaluationResult: Identifiable {
+    let id = UUID()
+    let description: String
+    let isPassed: Bool
+    let failureReason: String?
+    
+    init(description: String, isPassed: Bool, failureReason: String? = nil) {
+        self.description = description
+        self.isPassed = isPassed
+        self.failureReason = failureReason
+    }
 }
 
-public struct AssertionEngine {
+struct AssertionEngine {
     static func evaluate(
         assertion: SDTestAssertion,
         response: NetworkResponse
@@ -74,8 +80,80 @@ public struct AssertionEngine {
             if !passed {
                 reason = "Substring not found in response"
             }
+            
+        case .jsonKeyExists:
+            let key = (assertion.keyPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                ? (assertion.keyPath ?? "")
+                : assertion.expectedValue
+            desc = "JSON contains key '\(key)'"
+            if let data = response.body?.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data, options: []) {
+                passed = lookupJSONPath(in: json, path: key) != nil
+            } else {
+                passed = false
+            }
+            if !passed {
+                reason = "Key '\(key)' not found in JSON response"
+            }
+            
+        case .jsonValue:
+            let path = (assertion.keyPath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                ? (assertion.keyPath ?? "")
+                : "id"
+            desc = "JSON [\(path)] \(assertion.comparison.rawValue) '\(assertion.expectedValue)'"
+            if let data = response.body?.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data, options: []),
+               let value = lookupJSONPath(in: json, path: path) {
+                let actualString = "\(value)"
+                switch assertion.comparison {
+                case .equals:
+                    passed = actualString == assertion.expectedValue
+                case .notEquals:
+                    passed = actualString != assertion.expectedValue
+                case .contains:
+                    passed = actualString.contains(assertion.expectedValue)
+                case .greaterThan:
+                    let actualNum = Double(actualString) ?? 0.0
+                    let expNum = Double(assertion.expectedValue) ?? 0.0
+                    passed = actualNum > expNum
+                case .lessThan:
+                    let actualNum = Double(actualString) ?? 0.0
+                    let expNum = Double(assertion.expectedValue) ?? 0.0
+                    passed = actualNum < expNum
+                }
+                if !passed {
+                    reason = "Actual value was '\(actualString)'"
+                }
+            } else {
+                passed = false
+                reason = "Path '\(path)' not found in JSON body"
+            }
         }
         
         return AssertionEvaluationResult(description: desc, isPassed: passed, failureReason: reason)
+    }
+    
+    static func lookupJSONPath(in json: Any, path: String) -> Any? {
+        let cleanPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanPath.isEmpty { return nil }
+        
+        // Normalize syntax like "users[0].name" -> "users.0.name"
+        let normalized = cleanPath
+            .replacingOccurrences(of: "[", with: ".")
+            .replacingOccurrences(of: "]", with: "")
+        let components = normalized.split(separator: ".").map(String.init)
+        
+        var current: Any? = json
+        for comp in components {
+            guard let cur = current else { return nil }
+            if let dict = cur as? [String: Any] {
+                current = dict[comp]
+            } else if let array = cur as? [Any], let idx = Int(comp), idx >= 0, idx < array.count {
+                current = array[idx]
+            } else {
+                return nil
+            }
+        }
+        return current
     }
 }
