@@ -18,6 +18,7 @@
 * **UI-фреймворк:** SwiftUI (State-driven, Declarative)
 * **Мережевий шар:** `URLSession` + Swift Concurrency (`async/await`, `actor`, `URLSessionTaskDelegate`)
 * **База даних / Персистентність:** `SwiftData` (`@Model`, `#Predicate`, `@Query`)
+* **Фреймворк тестування:** Swift Testing (`@Suite`, `@Test`, `#expect`)
 * **Архітектура:** Clean Architecture + MVVM (Model-View-ViewModel)
 
 ---
@@ -57,7 +58,7 @@
   4.4. Реалізація системи автоматизованої валідації статусів, заголовків та тіла
   4.5. Інтерфейсна реалізація компонентів запиту та перегляду результатів
 РОЗДІЛ 5. ТЕСТУВАННЯ, ЕКСПЕРИМЕНТАЛЬНІ ДОСЛІДЖЕННЯ ТА ОЦІНКА ЕФЕКТИВНОСТІ
-  5.1. Модульне (Unit) та інтеграційне тестування компонентів (XCTest / Swift Testing)
+  5.1. Модульне (Unit) та інтеграційне тестування компонентів (Swift Testing)
   5.2. Навантажувальне тестування швидкодії локального парсингу та валідації
   5.3. Апробація системи на відкритих та тестових RESTful API
 ВИСНОВКИ
@@ -75,15 +76,15 @@
 ┌────────────────────────────────────────────────────────┐
 │                   Presentation Layer                   │
 │   (SwiftUI Views, ViewModels, Navigation Coordinators) │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
+└──────────────────────────┬─────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────┐
 │                      Domain Layer                      │
 │     (Use Cases / Interactors, Domain Entities,         │
 │          Assertion Engine, Variable Resolver)          │
-└───────────────────────────┬────────────────────────────┘
-                            │
-┌───────────────────────────▼────────────────────────────┐
+└──────────────────────────┬─────────────────────────────┘
+                           │
+┌──────────────────────────▼─────────────────────────────┐
 │                       Data Layer                       │
 │    (Repositories, NetworkClient [URLSession],          │
 │              Local Storage [SwiftData])                │
@@ -96,7 +97,7 @@
 
 ### 3.2. Обґрунтування нативного стеку
 1. **SwiftUI:**
-   * Декларативне управління станом без бійлерплейту;
+   * Декларативне управління станом без бойлерплейту;
    * Ідеально підходить для динамічних списків параметрів (Headers, Query, Form-data).
 2. **URLSession:**
    * Повна відмова від зовнішніх бібліотек (Alamofire тощо);
@@ -104,93 +105,41 @@
 3. **SwiftData:**
    * Сучасний стандарт персистентності від Apple;
    * Пряма робота з моделями у Swift через макрос `@Model`, типізовані предикати `#Predicate`, спрощена міграція.
-
-### 3.3. Структура файлової системи та модулів
-
-```text
-APICraft/
-├── App/
-│   ├── APICraftApp.swift
-│   └── AppConfiguration.swift
-├── Domain/
-│   ├── Models/                     # Чисті доменні структури (без залежності від SwiftData)
-│   │   ├── HTTPMethod.swift
-│   │   ├── TestAssertion.swift
-│   │   └── NetworkMetrics.swift
-│   ├── UseCases/                   # Бізнес-сценарії
-│   │   ├── ExecuteRequestUseCase.swift
-│   │   ├── ValidateAssertionsUseCase.swift
-│   │   └── ResolveEnvironmentUseCase.swift
-│   └── Engine/                     # Рушій тестування
-│       ├── AssertionEngine.swift
-│       └── VariableResolver.swift
-├── Data/
-│   ├── Storage/                    # SwiftData @Model сутності
-│   │   ├── Entities/
-│   │   │   ├── SDCollection.swift
-│   │   │   ├── SDRequest.swift
-│   │   │   ├── SDEnvironment.swift
-│   │   │   └── SDTestResult.swift
-│   │   └── Repositories/
-│   │       ├── RequestRepository.swift
-│   │       └── EnvironmentRepository.swift
-│   └── Network/                    # Мережевий шар
-│       ├── NativeNetworkClient.swift
-│       ├── NetworkLogger.swift
-│       └── MetricsCollector.swift
-├── Presentation/
-│   ├── Common/                     # Перевикористовувані компоненти UI
-│   │   ├── KeyValueRowView.swift
-│   │   ├── SyntaxHighlightedText.swift
-│   │   └── StatusBadgeView.swift
-│   ├── RequestBuilder/             # Конструктор запиту
-│   │   ├── RequestBuilderView.swift
-│   │   └── RequestBuilderViewModel.swift
-│   ├── ResponseViewer/             # Перегляд та аналіз відповіді
-│   │   ├── ResponseViewerView.swift
-│   │   ├── JSONFormattingView.swift
-│   │   └── ResponseHeadersView.swift
-│   ├── Collections/                # Керування колекціями
-│   │   ├── CollectionsListView.swift
-│   │   └── CollectionDetailView.swift
-│   ├── Environments/               # Змінні оточення
-│   │   ├── EnvironmentListView.swift
-│   │   └── EnvironmentEditView.swift
-│   └── TestRunner/                 # Запуск тестів та перегляд статусів
-│       ├── TestRunnerView.swift
-│       └── TestRunnerViewModel.swift
-└── Utilities/
-    ├── JSONParser.swift
-    ├── Extensions/
-    └── Mocks/
-```
+4. **Swift Testing:**
+   * Сучасний стандарт модульного тестування від Apple (`@Suite`, `@Test`, `#expect`).
 
 ---
 
 ## 4. Roadmap розробки (Feature-лист)
 
-### Етап 1: MVP для курсової роботи
+### Етап 1: MVP для курсової роботи (Виконано 100%)
 *Ціль: Автономний, стабільний HTTP-клієнт з локальним збереженням, редактором запитів та базовою перевіркою відповідей.*
 
-* [ ] **Request Builder:**
-  * Вибір методів: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`.
-  * Редагування URL, Query Parameters та Headers (key-value інтерфейс з перемикачами активності).
-  * Редагування Body: `none`, `raw JSON`, `x-www-form-urlencoded`.
-* [ ] **Response Inspector:**
-  * Відображення HTTP-статусу, часу відгуку (ms) та розміру (bytes/KB).
-  * Перегляд заголовків відповіді (Response Headers) та Cookies.
-  * Форматування JSON (Prettify) та синтаксичне підсвічування.
-* [ ] **Локальне сховище (SwiftData):**
-  * Історія останніх виконаних запитів.
-  * Створення та структурування колекцій/папок.
-  * Збереження запитів з історії у колекції.
-* [ ] **Змінні середовища (Environments):**
-  * Створення та перемикання активного оточення (`Dev`, `Stage`, `Prod`).
-  * Підстановка змінних виду `{{base_url}}` у URL, Headers, Body.
-* [ ] **Базовий Assertion Engine:**
-  * Валідація коду статусу (`Status == 200`).
-  * Валідація часу виконання (`Latency < 500ms`).
-  * Перевірка наявності кореневого ключа в JSON.
+* [x] **Request Builder:**
+  * [x] Вибір методів: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`.
+  * [x] Редагування URL, Query Parameters та Headers (key-value інтерфейс з перемикачами активності).
+  * [x] Редагування Body: `none`, `raw JSON`, `x-www-form-urlencoded`.
+  * [x] Генерація та парсинг cURL команд (CURLParser, CURLGenerator).
+* [x] **Response Inspector:**
+  * [x] Відображення HTTP-статусу, часу відгуку (ms) та розміру (bytes/KB).
+  * [x] Перегляд заголовків відповіді (Response Headers) та Cookies (з безпековими прапорцями Secure/HTTPOnly).
+  * [x] Форматування JSON (Prettify) та повноцінне кольорове синтаксичне підсвічування.
+* [x] **Локальне сховище (SwiftData):**
+  * [x] Історія останніх виконаних запитів із збереженням метрик і логів перевірок.
+  * [x] Створення та структурування колекцій/папок.
+  * [x] Збереження запитів з історії у вибрану або нову колекцію.
+* [x] **Змінні середовища (Environments):**
+  * [x] Створення та перемикання активного оточення (`Dev`, `Stage`, `Prod`).
+  * [x] Підстановка змінних виду `{{base_url}}` у URL, Headers, Body.
+* [x] **Assertion Engine:**
+  * [x] Валідація коду статусу (`Status == 200`).
+  * [x] Валідація часу виконання (`Latency < 500ms`).
+  * [x] Перевірка наявності та вмісту заголовків.
+  * [x] Перевірка входження підрядка в тіло відповіді (`bodyContains`).
+  * [x] Валідація наявності кореневого та вкладеного ключа в JSON (`jsonKeyExists`).
+  * [x] Валідація конкретних значень у JSON за крапковим шляхом (`jsonValue`).
+* [x] **Модульне тестування (Swift Testing):**
+  * [x] Таргет `APICraftTests` з 14 автоматизованими юніт-тестами (100% успішне проходження).
 
 ---
 
@@ -256,7 +205,9 @@ public enum AssertionTarget: String, Codable {
     case statusCode
     case responseTime
     case header
-    case jsonBodyPath
+    case bodyContains
+    case jsonKeyExists
+    case jsonValue
 }
 
 public enum ParameterLocation: String, Codable {
@@ -264,207 +215,4 @@ public enum ParameterLocation: String, Codable {
     case query
     case formField
 }
-
-// MARK: - Entities
-
-@Model
-final class SDCollection {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var details: String?
-    var createdAt: Date
-    var updatedAt: Date
-    
-    @Relationship(deleteRule: .cascade, inverse: \SDRequest.collection)
-    var requests: [SDRequest] = []
-    
-    init(name: String, details: String? = nil) {
-        self.id = UUID()
-        self.name = name
-        self.details = details
-        self.createdAt = Date()
-        self.updatedAt = Date()
-        self.requests = []
-    }
-}
-
-@Model
-final class SDRequest {
-    @Attribute(.unique) var id: UUID
-    var title: String
-    var urlTemplate: String
-    var method: HTTPMethodType
-    var bodyType: BodyType
-    var rawBodyContent: String?
-    var isHistoryItem: Bool
-    var createdAt: Date
-    
-    var collection: SDCollection?
-    
-    @Relationship(deleteRule: .cascade)
-    var keyValues: [SDRequestParameter] = []
-    
-    @Relationship(deleteRule: .cascade)
-    var assertions: [SDTestAssertion] = []
-    
-    @Relationship(deleteRule: .cascade, inverse: \SDExecutionResult.request)
-    var executionHistory: [SDExecutionResult] = []
-    
-    init(
-        title: String,
-        urlTemplate: String,
-        method: HTTPMethodType = .get,
-        bodyType: BodyType = .none,
-        rawBodyContent: String? = nil,
-        isHistoryItem: Bool = false
-    ) {
-        self.id = UUID()
-        self.title = title
-        self.urlTemplate = urlTemplate
-        self.method = method
-        self.bodyType = bodyType
-        self.rawBodyContent = rawBodyContent
-        self.isHistoryItem = isHistoryItem
-        self.createdAt = Date()
-    }
-}
-
-@Model
-final class SDRequestParameter {
-    @Attribute(.unique) var id: UUID
-    var key: String
-    var value: String
-    var isEnabled: Bool
-    var location: ParameterLocation
-    
-    init(key: String, value: String, isEnabled: Bool = true, location: ParameterLocation) {
-        self.id = UUID()
-        self.key = key
-        self.value = value
-        self.isEnabled = isEnabled
-        self.location = location
-    }
-}
-
-@Model
-final class SDTestAssertion {
-    @Attribute(.unique) var id: UUID
-    var target: AssertionTarget
-    var keyPath: String?
-    var comparison: AssertionComparison
-    var expectedValue: String
-    var isEnabled: Bool
-    
-    init(
-        target: AssertionTarget,
-        keyPath: String? = nil,
-        comparison: AssertionComparison,
-        expectedValue: String,
-        isEnabled: Bool = true
-    ) {
-        self.id = UUID()
-        self.target = target
-        self.keyPath = keyPath
-        self.comparison = comparison
-        self.expectedValue = expectedValue
-        self.isEnabled = isEnabled
-    }
-}
-
-@Model
-final class SDExecutionResult {
-    @Attribute(.unique) var id: UUID
-    var statusCode: Int
-    var responseDurationMs: Double
-    var responseBodySize: Int
-    var responseBody: String?
-    var responseHeadersData: Data?
-    var executedAt: Date
-    var isAllAssertionsPassed: Bool
-    
-    var request: SDRequest?
-    
-    @Relationship(deleteRule: .cascade)
-    var assertionLogs: [SDAssertionLog] = []
-    
-    init(
-        statusCode: Int,
-        responseDurationMs: Double,
-        responseBodySize: Int,
-        responseBody: String? = nil,
-        responseHeadersData: Data? = nil,
-        isAllAssertionsPassed: Bool
-    ) {
-        self.id = UUID()
-        self.statusCode = statusCode
-        self.responseDurationMs = responseDurationMs
-        self.responseBodySize = responseBodySize
-        self.responseBody = responseBody
-        self.responseHeadersData = responseHeadersData
-        self.executedAt = Date()
-        self.isAllAssertionsPassed = isAllAssertionsPassed
-    }
-}
-
-@Model
-final class SDAssertionLog {
-    @Attribute(.unique) var id: UUID
-    var assertionDescription: String
-    var isPassed: Bool
-    var failureReason: String?
-    
-    init(assertionDescription: String, isPassed: Bool, failureReason: String? = nil) {
-        self.id = UUID()
-        self.assertionDescription = assertionDescription
-        self.isPassed = isPassed
-        self.failureReason = failureReason
-    }
-}
-
-@Model
-final class SDEnvironment {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var isSelected: Bool
-    
-    @Relationship(deleteRule: .cascade, inverse: \SDEnvironmentVariable.environment)
-    var variables: [SDEnvironmentVariable] = []
-    
-    init(name: String, isSelected: Bool = false) {
-        self.id = UUID()
-        self.name = name
-        self.isSelected = isSelected
-    }
-}
-
-@Model
-final class SDEnvironmentVariable {
-    @Attribute(.unique) var id: UUID
-    var key: String
-    var value: String
-    var isSecret: Bool
-    
-    var environment: SDEnvironment?
-    
-    init(key: String, value: String, isSecret: Bool = false) {
-        self.id = UUID()
-        self.key = key
-        self.value = value
-        self.isSecret = isSecret
-    }
-}
 ```
-
----
-
-## 6. Стратегічні рекомендації для успішного захисту
-
-1. **Для курсової роботи:**
-   * Продемонструвати безпомилкову роботу нативних фреймворків (`SwiftUI` + `URLSession` + `SwiftData`).
-   * Показати роботу з живим відкритим API (наприклад, GitHub REST API або JSONPlaceholder).
-   * Продемонструвати підстановку змінних (наприклад, `{{host}}/users`) та спрацьовування асерта статусу відповіді `200 OK`.
-2. **Для дипломної роботи:**
-   * Підкреслити алгоритмічну новизну: фаззинг, мутаційні тести, ланцюжки залежних запитів (Request Chaining).
-   * Показати експериментальні дані: графіки споживання пам'яті (Instruments) та швидкості порівняно з іншими інструментами.
-   * Надати звіти у форматах JUnit XML та інтеграцію зі специфікацією OpenAPI 3.0.
-
