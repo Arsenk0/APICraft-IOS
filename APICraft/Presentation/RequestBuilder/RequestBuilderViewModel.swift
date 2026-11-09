@@ -18,6 +18,7 @@ public enum APIKeyLocation: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+@MainActor
 @Observable
 public final class RequestBuilderViewModel {
     public var title: String = ""
@@ -39,11 +40,14 @@ public final class RequestBuilderViewModel {
         RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)
     ]
     public var queryParams: [RequestKeyValue] = []
-    public var assertions: [RequestAssertionItem] = []
+    public var assertions: [RequestAssertionItem] = [
+        RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+        RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "title")
+    ]
     
     public var isLoading: Bool = false
     public var response: NetworkResponse?
-    public var assertionLogs: [AssertionEvaluationResult] = []
+    var assertionLogs: [AssertionEvaluationResult] = []
     
     public init() {}
     
@@ -331,8 +335,6 @@ public final class RequestBuilderViewModel {
             historyItem.assertions.append(p)
         }
         
-        context.insert(historyItem)
-        
         let allPassed = evalLogs.isEmpty ? true : evalLogs.allSatisfy { $0.isPassed }
         let execResult = SDExecutionResult(
             statusCode: netResponse.statusCode,
@@ -342,9 +344,26 @@ public final class RequestBuilderViewModel {
             isAllAssertionsPassed: allPassed
         )
         execResult.request = historyItem
-        context.insert(execResult)
+        historyItem.executionHistory.append(execResult)
         
-        try? context.save()
+        for log in evalLogs {
+            let sLog = SDAssertionLog(
+                assertionDescription: log.description,
+                isPassed: log.isPassed,
+                failureReason: log.failureReason
+            )
+            context.insert(sLog)
+            execResult.assertionLogs.append(sLog)
+        }
+        
+        context.insert(execResult)
+        context.insert(historyItem)
+        
+        do {
+            try context.save()
+        } catch {
+            print("⚠️ SwiftData save error: \(error)")
+        }
     }
     
     func loadFrom(request: SDRequest) {
