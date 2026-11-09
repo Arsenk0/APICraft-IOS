@@ -44,6 +44,9 @@ public struct CollectionsListView: View {
     @State private var importErrorMessage: String?
     @State private var showExportToast = false
     
+    // Collection Editing
+    @State private var collectionToEdit: SDCollection?
+    
     public init() {}
     
     public var body: some View {
@@ -61,17 +64,26 @@ public struct CollectionsListView: View {
                             NavigationLink {
                                 CollectionDetailView(collection: collection)
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(collection.name)
-                                        .font(.headline)
-                                        .lineLimit(1)
+                                HStack(spacing: 12) {
+                                    Image(systemName: "folder.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(.blue)
+                                        .frame(width: 32, height: 32)
+                                        .background(Color.blue.opacity(0.12))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
                                     
-                                    Text("\(collection.requests.count) \(collection.requests.count == 1 ? "request" : "requests")")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(collection.name)
+                                            .font(.headline)
+                                            .lineLimit(1)
+                                        
+                                        Text("\(collection.requests.count) \(collection.requests.count == 1 ? "request" : "requests")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 3)
                             }
                             .swipeActions(edge: .leading) {
                                 Button {
@@ -90,6 +102,51 @@ public struct CollectionsListView: View {
                                     Label("Copy JSON", systemImage: "square.and.arrow.up")
                                 }
                                 .tint(.indigo)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    deleteCollection(collection)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                
+                                Button {
+                                    collectionToEdit = collection
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                            }
+                            .contextMenu {
+                                Button {
+                                    collectionToEdit = collection
+                                } label: {
+                                    Label("Edit Collection", systemImage: "pencil")
+                                }
+                                
+                                Button {
+                                    let json = exportCollectionJSON(collection)
+                                    UIPasteboard.general.string = json
+                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                    withAnimation(.spring) {
+                                        showExportToast = true
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        withAnimation {
+                                            showExportToast = false
+                                        }
+                                    }
+                                } label: {
+                                    Label("Copy JSON", systemImage: "doc.on.doc")
+                                }
+                                
+                                Divider()
+                                
+                                Button(role: .destructive) {
+                                    deleteCollection(collection)
+                                } label: {
+                                    Label("Delete Collection", systemImage: "trash")
+                                }
                             }
                         }
                         .onDelete(perform: deleteCollections)
@@ -156,6 +213,9 @@ public struct CollectionsListView: View {
             .sheet(isPresented: $showingImportSheet) {
                 importSheet
             }
+            .sheet(item: $collectionToEdit) { col in
+                EditCollectionSheet(collection: col)
+            }
         }
     }
     
@@ -183,16 +243,29 @@ public struct CollectionsListView: View {
                         .padding(.horizontal)
                 }
                 
-                Button {
-                    if let clip = UIPasteboard.general.string {
-                        importJSONText = clip
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                HStack(spacing: 12) {
+                    Button {
+                        if let clip = UIPasteboard.general.string {
+                            importJSONText = clip
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    } label: {
+                        Label("Paste Clipboard", systemImage: "doc.on.clipboard")
+                            .font(.caption.bold())
                     }
-                } label: {
-                    Label("Paste from Clipboard", systemImage: "doc.on.clipboard")
-                        .font(.caption.bold())
+                    .buttonStyle(.bordered)
+                    
+                    Button(role: .destructive) {
+                        importJSONText = ""
+                        importErrorMessage = nil
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Label("Clear", systemImage: "xmark.circle")
+                            .font(.caption.bold())
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(importJSONText.isEmpty)
                 }
-                .buttonStyle(.bordered)
                 
                 Spacer()
             }
@@ -203,6 +276,15 @@ public struct CollectionsListView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         showingImportSheet = false
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if !importJSONText.isEmpty {
+                        Button("Clear") {
+                            importJSONText = ""
+                            importErrorMessage = nil
+                        }
+                        .foregroundStyle(.red)
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -222,6 +304,7 @@ public struct CollectionsListView: View {
         }
     }
     
+
     private func createCollection() {
         let trimmed = newCollectionName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -231,9 +314,17 @@ public struct CollectionsListView: View {
         newCollectionName = ""
     }
     
+    private func deleteCollection(_ col: SDCollection) {
+        modelContext.delete(col)
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    
     private func deleteCollections(offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(collections[index])
+            if collections.indices.contains(index) {
+                modelContext.delete(collections[index])
+            }
         }
         try? modelContext.save()
     }
@@ -323,5 +414,62 @@ public struct CollectionsListView: View {
         }
         
         return false
+    }
+}
+
+// MARK: - Edit Collection Sheet
+struct EditCollectionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    let collection: SDCollection
+    
+    @State private var name: String
+    @State private var details: String
+    
+    init(collection: SDCollection) {
+        self.collection = collection
+        _name = State(initialValue: collection.name)
+        _details = State(initialValue: collection.details ?? "")
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Collection Details") {
+                    TextField("Collection Name", text: $name)
+                        .autocorrectionDisabled()
+                    
+                    TextField("Description (optional)", text: $details, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+            }
+            .navigationTitle("Edit Collection")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmedName.isEmpty else { return }
+                        
+                        collection.name = trimmedName
+                        let trimmedDetails = details.trimmingCharacters(in: .whitespacesAndNewlines)
+                        collection.details = trimmedDetails.isEmpty ? nil : trimmedDetails
+                        collection.updatedAt = Date()
+                        
+                        try? modelContext.save()
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .font(.headline)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

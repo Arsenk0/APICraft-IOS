@@ -7,6 +7,7 @@ struct CollectionDetailView: View {
     
     @State private var showingAddRequestAlert = false
     @State private var showingRunnerSheet = false
+    @State private var showingEditCollectionSheet = false
     @State private var newRequestTitle = ""
     @State private var newRequestURL = "https://"
     @State private var newRequestMethod: HTTPMethodType = .get
@@ -109,6 +110,28 @@ struct CollectionDetailView: View {
                             }
                             .tint(.blue)
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteSingleRequest(request)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .contextMenu {
+                            Button {
+                                AppNavigationState.shared.openInBuilder(request: request)
+                            } label: {
+                                Label("Open in Builder", systemImage: "arrow.up.right.square")
+                            }
+                            
+                            Divider()
+                            
+                            Button(role: .destructive) {
+                                deleteSingleRequest(request)
+                            } label: {
+                                Label("Delete Request", systemImage: "trash")
+                            }
+                        }
                     }
                     .onDelete(perform: deleteRequest)
                 }
@@ -118,13 +141,11 @@ struct CollectionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if !collection.requests.isEmpty {
-                    Button {
-                        showingRunnerSheet = true
-                    } label: {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                    }
+                Button {
+                    showingEditCollectionSheet = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
                 }
                 
                 Button {
@@ -144,12 +165,26 @@ struct CollectionDetailView: View {
         .sheet(isPresented: $showingRunnerSheet) {
             CollectionRunnerView(collection: collection)
         }
+        .sheet(isPresented: $showingEditCollectionSheet) {
+            EditCollectionSheet(collection: collection)
+        }
+    }
+    
+    private func deleteSingleRequest(_ req: SDRequest) {
+        if let idx = collection.requests.firstIndex(where: { $0.id == req.id }) {
+            collection.requests.remove(at: idx)
+        }
+        modelContext.delete(req)
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
     
     private func deleteRequest(offsets: IndexSet) {
         for index in offsets {
-            let req = collection.requests[index]
-            modelContext.delete(req)
+            if collection.requests.indices.contains(index) {
+                let req = collection.requests[index]
+                modelContext.delete(req)
+            }
         }
         try? modelContext.save()
     }
@@ -230,204 +265,132 @@ struct CollectionRunnerView: View {
     @State private var results: [RunnerItemResult] = []
     @State private var hasFinished = false
     
-    init(collection: SDCollection) {
-        self.collection = collection
-    }
-    
-    private var totalPassedAssertions: Int {
-        results.reduce(0) { sum, r in sum + r.assertionLogs.filter { $0.isPassed }.count }
-    }
-    
-    private var totalAssertions: Int {
-        results.reduce(0) { sum, r in sum + r.assertionLogs.count }
-    }
-    
-    private var avgLatency: Double {
-        guard !results.isEmpty else { return 0 }
-        let total = results.reduce(0.0) { $0 + $1.durationMs }
-        return total / Double(results.count)
-    }
-    
     public var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Header Status Card
-                    VStack(spacing: 12) {
+            VStack(spacing: 0) {
+                // Runner Header Card
+                VStack(spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(collection.name)
+                                .font(.headline)
+                            Text("\(collection.requests.count) requests in run")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer()
+                        
                         if isRunning {
-                            VStack(spacing: 8) {
-                                HStack {
-                                    Text("Executing Requests...")
-                                        .font(.subheadline.bold())
-                                    Spacer()
-                                    Text("\(currentIndex + 1) of \(collection.requests.count)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                                
-                                ProgressView(value: Double(currentIndex + 1), total: Double(max(1, collection.requests.count)))
-                                    .tint(.blue)
-                                
-                                if currentIndex < collection.requests.count {
-                                    HStack(spacing: 6) {
-                                        MethodBadgeView(method: collection.requests[currentIndex].method)
-                                        Text(collection.requests[currentIndex].title)
-                                            .font(.caption.bold())
-                                            .lineLimit(1)
-                                        Spacer()
-                                    }
-                                    .padding(.top, 4)
-                                }
-                            }
+                            ProgressView()
+                                .padding(.trailing, 4)
                         } else if hasFinished {
-                            // Completion Summary Dashboard
-                            VStack(spacing: 10) {
-                                HStack {
-                                    Image(systemName: results.allSatisfy { $0.isAllPassed } ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                        .foregroundStyle(results.allSatisfy { $0.isAllPassed } ? .green : .orange)
-                                        .font(.title2)
-                                    Text("Run Finished")
-                                        .font(.headline.bold())
-                                    Spacer()
-                                }
-                                
-                                HStack(spacing: 8) {
-                                    summaryCard(title: "Requests", value: "\(results.count)", subtitle: "completed", color: .blue)
-                                    summaryCard(
-                                        title: "Assertions",
-                                        value: "\(totalPassedAssertions)/\(totalAssertions)",
-                                        subtitle: totalAssertions == 0 ? "none" : (totalPassedAssertions == totalAssertions ? "100% pass" : "issues"),
-                                        color: totalPassedAssertions == totalAssertions ? .green : .red
-                                    )
-                                    summaryCard(title: "Avg Time", value: String(format: "%.0f ms", avgLatency), subtitle: "latency", color: .purple)
-                                }
+                            let passedCount = results.filter { $0.isAllPassed }.count
+                            HStack(spacing: 4) {
+                                Image(systemName: passedCount == results.count ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                Text("\(passedCount)/\(results.count) Passed")
                             }
-                        } else {
-                            VStack(spacing: 8) {
-                                Image(systemName: "play.circle")
-                                    .font(.system(size: 36))
-                                    .foregroundStyle(.blue)
-                                Text("Ready to test \(collection.requests.count) requests")
-                                    .font(.headline)
-                                Text("Collection Runner will automatically execute all requests sequentially and evaluate their test assertions.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .font(.caption.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(passedCount == results.count ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                            .foregroundStyle(passedCount == results.count ? Color.green : Color.red)
+                            .clipShape(Capsule())
                         }
                     }
-                    .padding(14)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal)
                     
-                    // Detailed List of Results
-                    if !results.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Execution Results")
-                                .font(.caption.bold())
+                    if isRunning {
+                        ProgressView(value: Double(currentIndex), total: Double(collection.requests.count))
+                            .progressViewStyle(.linear)
+                    }
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                
+                // Result List
+                List {
+                    ForEach(results) { res in
+                        Section {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 8) {
+                                    MethodBadgeView(method: res.request.method)
+                                    Text(res.request.title)
+                                        .font(.subheadline.bold())
+                                    Spacer()
+                                    StatusBadgeView(statusCode: res.statusCode)
+                                }
+                                
+                                HStack(spacing: 12) {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "clock")
+                                        Text("\(String(format: "%.0f", res.durationMs)) ms")
+                                    }
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "arrow.down.circle")
+                                        Text(ByteCountFormatter.string(fromByteCount: Int64(res.sizeBytes), countStyle: .file))
+                                    }
+                                    HStack(spacing: 3) {
+                                        Image(systemName: res.isAllPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                            .foregroundStyle(res.isAllPassed ? .green : .red)
+                                        Text(res.isAllPassed ? "Assertions passed" : "Assertions failed")
+                                            .foregroundStyle(res.isAllPassed ? .green : .red)
+                                    }
+                                }
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal)
-                            
-                            ForEach(results) { res in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(spacing: 8) {
-                                        MethodBadgeView(method: res.request.method)
-                                        Text(res.request.title)
-                                            .font(.subheadline.bold())
-                                            .lineLimit(1)
-                                        Spacer()
-                                        StatusBadgeView(statusCode: res.statusCode)
-                                    }
-                                    
-                                    HStack(spacing: 12) {
-                                        Label(String(format: "%.0f ms", res.durationMs), systemImage: "timer")
-                                            .font(.caption2.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                        
-                                        Label("\(res.sizeBytes) B", systemImage: "arrow.down.circle")
-                                            .font(.caption2.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                        
-                                        Spacer()
-                                        
-                                        if !res.assertionLogs.isEmpty {
-                                            let passed = res.assertionLogs.filter { $0.isPassed }.count
-                                            Text("Tests: \(passed)/\(res.assertionLogs.count)")
-                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(passed == res.assertionLogs.count ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-                                                .foregroundStyle(passed == res.assertionLogs.count ? Color.green : Color.red)
-                                                .clipShape(Capsule())
-                                        }
-                                    }
-                                    
-                                    // Individual assertion breakdowns
-                                    if !res.assertionLogs.isEmpty {
-                                        Divider()
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            ForEach(res.assertionLogs) { a in
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: a.isPassed ? "checkmark" : "xmark")
-                                                        .font(.system(size: 10, weight: .bold))
-                                                        .foregroundStyle(a.isPassed ? .green : .red)
-                                                    Text(a.description)
-                                                        .font(.system(size: 11, design: .monospaced))
-                                                        .foregroundStyle(.primary)
-                                                    if let fail = a.failureReason {
-                                                        Text("(\(fail))")
-                                                            .font(.system(size: 10, design: .monospaced))
-                                                            .foregroundStyle(.red)
-                                                    }
-                                                    Spacer()
-                                                }
+                                
+                                if let err = res.error {
+                                    Text("Error: \(err)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.red)
+                                }
+                                
+                                if !res.assertionLogs.isEmpty {
+                                    Divider()
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        ForEach(res.assertionLogs) { log in
+                                            HStack(spacing: 6) {
+                                                Image(systemName: log.isPassed ? "checkmark" : "xmark")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundStyle(log.isPassed ? .green : .red)
+                                                Text(log.description)
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .foregroundStyle(.primary)
                                             }
                                         }
                                     }
                                 }
-                                .padding(12)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                )
-                                .padding(.horizontal)
                             }
+                            .padding(.vertical, 2)
                         }
                     }
-                    
-                    // Action Buttons
-                    VStack(spacing: 10) {
-                        if !isRunning {
-                            Button {
-                                Task {
-                                    await runAll()
-                                }
-                            } label: {
-                                HStack {
-                                    Image(systemName: hasFinished ? "arrow.clockwise" : "play.fill")
-                                    Text(hasFinished ? "Run Again" : "Start Runner")
-                                        .font(.subheadline.bold())
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.blue)
-                                .foregroundStyle(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
                 }
-                .padding(.top)
+                .listStyle(.insetGrouped)
+                
+                // Bottom Button
+                VStack {
+                    if !isRunning {
+                        Button {
+                            Task {
+                                await runCollection()
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: hasFinished ? "arrow.clockwise" : "play.fill")
+                                Text(hasFinished ? "Run Again" : "Start Run")
+                                    .fontWeight(.bold)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+                .padding()
             }
-            .navigationTitle("Collection Runner")
+            .navigationTitle("Runner")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -436,34 +399,11 @@ struct CollectionRunnerView: View {
                     }
                 }
             }
-            .task {
-                if !hasFinished && !isRunning {
-                    await runAll()
-                }
-            }
         }
     }
     
-    private func summaryCard(title: String, value: String, subtitle: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 15, weight: .bold, design: .monospaced))
-                .foregroundStyle(color)
-            Text(subtitle)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
-        .background(color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-    
-    private func runAll() async {
-        guard !collection.requests.isEmpty else { return }
+    @MainActor
+    private func runCollection() async {
         isRunning = true
         hasFinished = false
         results = []
@@ -476,63 +416,68 @@ struct CollectionRunnerView: View {
             }
         }
         
-        for (idx, req) in collection.requests.enumerated() {
-            currentIndex = idx
-            
-            // Resolve URL, Headers, and Params
+        for req in collection.requests {
+            currentIndex += 1
             let resolvedURL = VariableResolver.resolve(text: req.urlTemplate, using: envMap)
             var headers: [String: String] = [:]
-            for p in req.keyValues where p.isEnabled && p.location == .header && !p.key.isEmpty {
-                headers[p.key] = VariableResolver.resolve(text: p.value, using: envMap)
-            }
             var queryItems: [URLQueryItem] = []
-            for p in req.keyValues where p.isEnabled && p.location == .query && !p.key.isEmpty {
-                let resolvedVal = VariableResolver.resolve(text: p.value, using: envMap)
-                queryItems.append(URLQueryItem(name: p.key, value: resolvedVal))
-            }
-            let resolvedBody = VariableResolver.resolve(text: req.rawBodyContent ?? "", using: envMap)
             
-            // Execute Network Call
-            let netResp = await NativeNetworkClient.shared.execute(
+            for kv in req.keyValues where kv.isEnabled && !kv.key.isEmpty {
+                let resolved = VariableResolver.resolve(text: kv.value, using: envMap)
+                if kv.location == .header {
+                    headers[kv.key] = resolved
+                } else if kv.location == .query {
+                    queryItems.append(URLQueryItem(name: kv.key, value: resolved))
+                }
+            }
+            
+            let body = req.rawBodyContent.map { VariableResolver.resolve(text: $0, using: envMap) }
+            
+            let resp = await NativeNetworkClient.shared.execute(
                 urlString: resolvedURL,
                 method: req.method,
                 headers: headers,
                 queryItems: queryItems,
-                body: resolvedBody,
+                body: body,
                 bodyType: req.bodyType
             )
             
-            // Evaluate Assertions
-            var assertionLogs: [AssertionEvaluationResult] = []
+            // Assertions
+            var logs: [AssertionEvaluationResult] = []
             for a in req.assertions where a.isEnabled {
-                assertionLogs.append(AssertionEngine.evaluate(assertion: a, response: netResp))
+                let r = AssertionEngine.evaluate(assertion: a, response: resp)
+                logs.append(r)
             }
             
-            let allPassed = assertionLogs.isEmpty ? true : assertionLogs.allSatisfy { $0.isPassed }
+            let allPassed = logs.isEmpty ? (resp.statusCode >= 200 && resp.statusCode < 400) : logs.allSatisfy { $0.isPassed }
+            let item = RunnerItemResult(
+                request: req,
+                statusCode: resp.statusCode,
+                durationMs: resp.durationMs,
+                sizeBytes: resp.sizeBytes,
+                assertionLogs: logs,
+                isAllPassed: allPassed,
+                error: resp.error
+            )
+            results.append(item)
             
-            // Save to execution history in SwiftData
-            let execResult = SDExecutionResult(
-                statusCode: netResp.statusCode,
-                responseDurationMs: netResp.durationMs,
-                responseBodySize: netResp.sizeBytes,
-                responseBody: netResp.body,
+            // Save execution history
+            let exec = SDExecutionResult(
+                statusCode: resp.statusCode,
+                responseDurationMs: resp.durationMs,
+                responseBodySize: resp.sizeBytes,
+                responseBody: resp.body,
                 isAllAssertionsPassed: allPassed
             )
-            execResult.request = req
-            modelContext.insert(execResult)
-            
-            let res = RunnerItemResult(
-                request: req,
-                statusCode: netResp.statusCode,
-                durationMs: netResp.durationMs,
-                sizeBytes: netResp.sizeBytes,
-                assertionLogs: assertionLogs,
-                isAllPassed: allPassed,
-                error: netResp.error
-            )
-            
-            withAnimation(.snappy) {
-                results.append(res)
+            exec.request = req
+            modelContext.insert(exec)
+            for l in logs {
+                let sLog = SDAssertionLog(
+                    assertionDescription: l.description,
+                    isPassed: l.isPassed,
+                    failureReason: l.failureReason
+                )
+                exec.assertionLogs.append(sLog)
             }
         }
         
