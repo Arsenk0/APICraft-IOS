@@ -7,7 +7,14 @@ struct APIPreset: Identifiable {
     let method: HTTPMethodType
     let url: String
     let description: String
+    var headers: [RequestKeyValue] = [
+        RequestKeyValue(key: "Content-Type", value: "application/json", isEnabled: true),
+        RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)
+    ]
+    var queryParams: [RequestKeyValue] = []
     let sampleBody: String?
+    var bodyType: BodyType = .none
+    var sampleAssertions: [RequestAssertionItem] = []
 }
 
 public struct RequestBuilderView: View {
@@ -31,13 +38,145 @@ public struct RequestBuilderView: View {
     @State private var showCopiedToast = false
     
     private let starterPresets: [APIPreset] = [
-        APIPreset(name: "Todos", method: .get, url: "https://jsonplaceholder.typicode.com/todos/1", description: "GET single todo item", sampleBody: nil),
-        APIPreset(name: "Users", method: .get, url: "https://jsonplaceholder.typicode.com/users", description: "GET list of users", sampleBody: nil),
-        APIPreset(name: "Create Post", method: .post, url: "https://jsonplaceholder.typicode.com/posts", description: "POST new resource", sampleBody: "{\n  \"title\": \"foo\",\n  \"body\": \"bar\",\n  \"userId\": 1\n}"),
-        APIPreset(name: "ReqRes Users", method: .get, url: "https://reqres.in/api/users?page=2", description: "GET paginated users", sampleBody: nil),
-        APIPreset(name: "Status 200", method: .get, url: "https://httpbin.org/status/200", description: "HTTPBin 200 OK test", sampleBody: nil),
-        APIPreset(name: "UUID Gen", method: .get, url: "https://httpbin.org/uuid", description: "HTTPBin UUID generator", sampleBody: nil),
-        APIPreset(name: "Cat Fact", method: .get, url: "https://catfact.ninja/fact", description: "Random daily cat fact", sampleBody: nil)
+        APIPreset(
+            name: "GET Todo",
+            method: .get,
+            url: "https://jsonplaceholder.typicode.com/todos/1",
+            description: "GET single todo item by ID",
+            headers: [
+                RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "_v", value: "1.0", isEnabled: true)
+            ],
+            sampleBody: nil,
+            bodyType: .none,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .responseTime, comparison: .lessThan, expectedValue: "3000"),
+                RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "title"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "1", keyPath: "id")
+            ]
+        ),
+        APIPreset(
+            name: "POST JSON",
+            method: .post,
+            url: "https://httpbin.org/post",
+            description: "POST with JSON payload & custom headers",
+            headers: [
+                RequestKeyValue(key: "Content-Type", value: "application/json", isEnabled: true),
+                RequestKeyValue(key: "X-Client-App", value: "APICraft-iOS", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "source", value: "mobile_app", isEnabled: true)
+            ],
+            sampleBody: "{\n  \"username\": \"alex_dev\",\n  \"role\": \"tester\",\n  \"active\": true\n}",
+            bodyType: .json,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "json.username"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "alex_dev", keyPath: "json.username"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "mobile_app", keyPath: "args.source")
+            ]
+        ),
+        APIPreset(
+            name: "POST Form",
+            method: .post,
+            url: "https://httpbin.org/post",
+            description: "POST x-www-form-urlencoded form data",
+            headers: [
+                RequestKeyValue(key: "Content-Type", value: "application/x-www-form-urlencoded", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "env", value: "staging", isEnabled: true)
+            ],
+            sampleBody: "email=user%40example.com&tier=premium&subscribe=true",
+            bodyType: .urlEncoded,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "form.email"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "premium", keyPath: "form.tier")
+            ]
+        ),
+        APIPreset(
+            name: "PUT Replace",
+            method: .put,
+            url: "https://httpbin.org/put",
+            description: "PUT full entity update with JSON",
+            headers: [
+                RequestKeyValue(key: "Content-Type", value: "application/json", isEnabled: true),
+                RequestKeyValue(key: "X-Trace-ID", value: "put-10029", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "replace", value: "true", isEnabled: true)
+            ],
+            sampleBody: "{\n  \"id\": 42,\n  \"title\": \"Updated Title\",\n  \"completed\": true\n}",
+            bodyType: .json,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "json.title"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "Updated Title", keyPath: "json.title"),
+                RequestAssertionItem(target: .bodyContains, comparison: .contains, expectedValue: "put-10029")
+            ]
+        ),
+        APIPreset(
+            name: "PATCH Update",
+            method: .patch,
+            url: "https://httpbin.org/patch",
+            description: "PATCH partial field modification",
+            headers: [
+                RequestKeyValue(key: "Content-Type", value: "application/json", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "patchMode", value: "partial", isEnabled: true)
+            ],
+            sampleBody: "{\n  \"status\": \"archived\"\n}",
+            bodyType: .json,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "archived", keyPath: "json.status"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "partial", keyPath: "args.patchMode")
+            ]
+        ),
+        APIPreset(
+            name: "DELETE Item",
+            method: .delete,
+            url: "https://httpbin.org/delete",
+            description: "DELETE resource with query confirmation",
+            headers: [
+                RequestKeyValue(key: "Accept", value: "application/json", isEnabled: true),
+                RequestKeyValue(key: "X-Confirm-Delete", value: "yes", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "id", value: "991", isEnabled: true),
+                RequestKeyValue(key: "hard", value: "false", isEnabled: true)
+            ],
+            sampleBody: nil,
+            bodyType: .none,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "args.id"),
+                RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "991", keyPath: "args.id")
+            ]
+        ),
+        APIPreset(
+            name: "HEAD Headers",
+            method: .head,
+            url: "https://httpbin.org/get",
+            description: "HEAD metadata request without response body",
+            headers: [
+                RequestKeyValue(key: "Accept", value: "*/*", isEnabled: true)
+            ],
+            queryParams: [
+                RequestKeyValue(key: "test", value: "head_check", isEnabled: true)
+            ],
+            sampleBody: nil,
+            bodyType: .none,
+            sampleAssertions: [
+                RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200"),
+                RequestAssertionItem(target: .header, comparison: .contains, expectedValue: "application/json", keyPath: "Content-Type")
+            ]
+        )
     ]
     
     public init() {}
@@ -203,12 +342,13 @@ public struct RequestBuilderView: View {
                                             withAnimation(.snappy) {
                                                 viewModel.method = preset.method
                                                 viewModel.url = preset.url
+                                                viewModel.headers = preset.headers
+                                                viewModel.queryParams = preset.queryParams
+                                                viewModel.bodyType = preset.bodyType
+                                                viewModel.bodyText = preset.sampleBody ?? ""
+                                                viewModel.assertions = preset.sampleAssertions
                                                 viewModel.response = nil
                                                 viewModel.assertionLogs = []
-                                                if let body = preset.sampleBody {
-                                                    viewModel.bodyType = .json
-                                                    viewModel.bodyText = body
-                                                }
                                             }
                                         } label: {
                                             HStack(spacing: 4) {
