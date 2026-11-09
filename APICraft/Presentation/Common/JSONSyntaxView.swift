@@ -2,6 +2,11 @@ import SwiftUI
 
 public struct JSONSyntaxView: View {
     let rawJSON: String
+    let formattedJSON: String
+    let detectedFormat: String
+    let lineCount: Int
+    let isCollapsible: Bool
+    
     @State private var isCopied = false
     @State private var wrapLines = true
     @State private var isExpanded = false
@@ -10,50 +15,48 @@ public struct JSONSyntaxView: View {
     
     public init(rawJSON: String) {
         self.rawJSON = rawJSON
-    }
-    
-    private var detectedFormat: String {
         let trimmed = rawJSON.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "Empty" }
-        if (trimmed.hasPrefix("{") || trimmed.hasPrefix("[")) && formattedJSON != rawJSON {
-            return "JSON"
+        
+        var fmt = "Raw"
+        var pretty = rawJSON
+        
+        if trimmed.isEmpty {
+            fmt = "Empty"
+        } else if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") {
+            fmt = "JSON"
+            if trimmed.utf8.count < 300_000,
+               let data = trimmed.data(using: .utf8),
+               let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+               let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),
+               let prettyString = String(data: prettyData, encoding: .utf8) {
+                pretty = prettyString
+            }
+        } else if trimmed.lowercased().contains("<!doctype") || trimmed.lowercased().contains("<html") {
+            fmt = "HTML"
+        } else if trimmed.hasPrefix("<?xml") || (trimmed.hasPrefix("<") && trimmed.hasSuffix(">")) {
+            fmt = "XML"
         }
-        if trimmed.lowercased().contains("<!doctype") || trimmed.lowercased().contains("<html") {
-            return "HTML"
-        }
-        if trimmed.hasPrefix("<?xml") || (trimmed.hasPrefix("<") && trimmed.hasSuffix(">")) {
-            return "XML"
-        }
-        return "Raw"
-    }
-    
-    private var formattedJSON: String {
-        let trimmed = rawJSON.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              let data = trimmed.data(using: .utf8),
-              let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
-              let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),
-              let prettyString = String(data: prettyData, encoding: .utf8) else {
-            return rawJSON
-        }
-        return prettyString
-    }
-    
-    private var lineCount: Int {
-        formattedJSON.components(separatedBy: .newlines).count
-    }
-    
-    private var isCollapsible: Bool {
-        lineCount > 12 || formattedJSON.count > 350
+        
+        self.formattedJSON = pretty
+        self.detectedFormat = fmt
+        
+        let count = pretty.components(separatedBy: .newlines).count
+        self.lineCount = count
+        self.isCollapsible = count > 12 || pretty.count > 350
     }
     
     private func countMatches(in text: String, query: String) -> Int {
-        guard !query.isEmpty else { return 0 }
+        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanQuery.isEmpty else { return 0 }
         var count = 0
         var searchRange: Range<String.Index>? = text.startIndex..<text.endIndex
-        while let range = searchRange, let found = text.range(of: query, options: .caseInsensitive, range: range) {
+        while let range = searchRange, let found = text.range(of: cleanQuery, options: .caseInsensitive, range: range) {
             count += 1
-            searchRange = found.upperBound < text.endIndex ? found.upperBound..<text.endIndex : nil
+            if found.upperBound >= text.endIndex || found.upperBound <= range.lowerBound {
+                break
+            }
+            searchRange = found.upperBound..<text.endIndex
+            if count > 500 { break }
         }
         return count
     }
@@ -61,12 +64,19 @@ public struct JSONSyntaxView: View {
     private func attributedContent(for text: String) -> AttributedString {
         var attr = AttributedString(text)
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isSearching, !query.isEmpty else { return attr }
+        guard isSearching, !query.isEmpty, text.count < 40_000 else { return attr }
         
         var searchRange = attr.startIndex..<attr.endIndex
-        while let range = attr[searchRange].range(of: query, options: .caseInsensitive) {
+        var iterations = 0
+        while searchRange.lowerBound < searchRange.upperBound,
+              let range = attr[searchRange].range(of: query, options: .caseInsensitive) {
             attr[range].backgroundColor = Color.yellow.opacity(0.35)
             attr[range].inlinePresentationIntent = .stronglyEmphasized
+            
+            iterations += 1
+            if iterations > 200 || range.upperBound >= attr.endIndex || range.upperBound <= searchRange.lowerBound {
+                break
+            }
             searchRange = range.upperBound..<attr.endIndex
         }
         return attr
