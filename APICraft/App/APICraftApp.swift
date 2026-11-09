@@ -45,16 +45,8 @@ struct APICraftApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                MainTabView()
-                    .environment(\.locale, Locale(identifier: "en_US"))
-                
-                if isSplashActive {
-                    SplashScreenView(isActive: $isSplashActive)
-                        .transition(.opacity.combined(with: .scale(scale: 1.03)))
-                        .zIndex(999)
-                }
-            }
+            MainTabView()
+                .environment(\.locale, Locale(identifier: "en_US"))
         }
         .modelContainer(sharedModelContainer)
     }
@@ -64,10 +56,9 @@ struct APICraftApp: App {
 public struct SplashScreenView: View {
     @Binding var isActive: Bool
     
-    @State private var logoScale: CGFloat = 0.7
+    @State private var logoScale: CGFloat = 0.85
     @State private var logoOpacity: Double = 0.0
     @State private var textOpacity: Double = 0.0
-    @State private var glowRotation: Double = 0.0
     @State private var progress: Double = 0.0
     @State private var statusText: String = "Initializing API Engine..."
     
@@ -81,28 +72,26 @@ public struct SplashScreenView: View {
             Color.black
                 .ignoresSafeArea()
             
-            // Ambient glowing gradient orbs
+            // Static ambient gradient glow (no infinite rotation to prevent layer decomposition faults)
             ZStack {
                 Circle()
-                    .fill(Color.cyan.opacity(0.18))
-                    .frame(width: 280, height: 280)
-                    .blur(radius: 60)
-                    .offset(x: -60, y: -80)
+                    .fill(Color.cyan.opacity(0.15))
+                    .frame(width: 260, height: 260)
+                    .blur(radius: 50)
+                    .offset(x: -50, y: -60)
                 
                 Circle()
-                    .fill(Color.purple.opacity(0.18))
-                    .frame(width: 280, height: 280)
-                    .blur(radius: 60)
-                    .offset(x: 70, y: 70)
+                    .fill(Color.purple.opacity(0.15))
+                    .frame(width: 260, height: 260)
+                    .blur(radius: 50)
+                    .offset(x: 60, y: 60)
             }
-            .rotationEffect(.degrees(glowRotation))
             
             VStack(spacing: 24) {
                 Spacer()
                 
-                // Animated App Icon / Logo
+                // App Icon / Logo
                 ZStack {
-                    // Pulsing outer glow ring
                     RoundedRectangle(cornerRadius: 32)
                         .stroke(
                             LinearGradient(
@@ -112,26 +101,24 @@ public struct SplashScreenView: View {
                             ),
                             lineWidth: 2
                         )
-                        .frame(width: 124, height: 124)
-                        .blur(radius: 4)
-                        .scaleEffect(logoScale * 1.05)
-                        .opacity(logoOpacity * 0.8)
+                        .frame(width: 120, height: 120)
+                        .blur(radius: 3)
+                        .opacity(logoOpacity * 0.7)
                     
-                    // Main App Logo
                     Image("AppLogo")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 110, height: 110)
-                        .clipShape(RoundedRectangle(cornerRadius: 26))
-                        .shadow(color: .cyan.opacity(0.4), radius: 16, y: 6)
+                        .frame(width: 104, height: 104)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .shadow(color: .cyan.opacity(0.35), radius: 12, y: 4)
                 }
                 .scaleEffect(logoScale)
                 .opacity(logoOpacity)
                 
                 // App Title & Tagline
-                VStack(spacing: 8) {
+                VStack(spacing: 6) {
                     Text("APICraft")
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .font(.system(size: 32, weight: .heavy, design: .rounded))
                         .foregroundStyle(
                             LinearGradient(
                                 colors: [.white, .cyan.opacity(0.9)],
@@ -141,20 +128,19 @@ public struct SplashScreenView: View {
                         )
                     
                     Text("Fast • Native • Modern API Client")
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.6))
                 }
                 .opacity(textOpacity)
                 
                 Spacer()
                 
-                // Futuristic Loading Bar & Status
-                VStack(spacing: 10) {
-                    // Slim Progress Bar
+                // Loading Bar & Status
+                VStack(spacing: 8) {
                     ZStack(alignment: .leading) {
                         Capsule()
                             .fill(Color.white.opacity(0.08))
-                            .frame(width: 160, height: 4)
+                            .frame(width: 140, height: 3)
                         
                         Capsule()
                             .fill(
@@ -164,8 +150,8 @@ public struct SplashScreenView: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: 160 * progress, height: 4)
-                            .animation(.easeOut(duration: 0.3), value: progress)
+                            .frame(width: 140 * progress, height: 3)
+                            .animation(.easeOut(duration: 0.25), value: progress)
                     }
                     
                     Text(statusText)
@@ -173,7 +159,7 @@ public struct SplashScreenView: View {
                         .foregroundStyle(.white.opacity(0.5))
                 }
                 .opacity(textOpacity)
-                .padding(.bottom, 40)
+                .padding(.bottom, 36)
             }
         }
         .contentShape(Rectangle())
@@ -186,50 +172,22 @@ public struct SplashScreenView: View {
     }
     
     private func runAnimationSequence() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        
-        // 1. Logo pop-in
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+        withAnimation(.easeOut(duration: 0.2)) {
             logoScale = 1.0
             logoOpacity = 1.0
+            textOpacity = 1.0
+            progress = 1.0
+            statusText = "Ready"
         }
         
-        // 2. Slow rotation of glow
-        withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
-            glowRotation = 360
-        }
-        
-        // 3. Fade in text & initial progress
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            withAnimation(.easeOut(duration: 0.4)) {
-                textOpacity = 1.0
-                progress = 0.4
-            }
-        }
-        
-        // 4. Progress advance
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            withAnimation {
-                progress = 0.8
-                statusText = "Loading Environment & Schemas..."
-            }
-        }
-        
-        // 5. Ready and dismiss
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
-            withAnimation {
-                progress = 1.0
-                statusText = "Ready"
-            }
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             dismissSplash()
         }
     }
     
     private func dismissSplash() {
-        withAnimation(.easeInOut(duration: 0.35)) {
+        guard isActive else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
             isActive = false
         }
     }
