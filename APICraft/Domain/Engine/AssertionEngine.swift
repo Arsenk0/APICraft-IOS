@@ -205,9 +205,9 @@ public struct AssertionEngine {
 
 // MARK: - Centralized Request Execution Service (Clean Architecture / Use Case)
 @MainActor
-public struct RequestExecutionService {
+struct RequestExecutionService {
     @discardableResult
-    public static func execute(
+    static func execute(
         request: SDRequest,
         activeEnvironment: SDEnvironment?,
         context: ModelContext,
