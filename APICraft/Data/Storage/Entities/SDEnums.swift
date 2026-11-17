@@ -4,8 +4,8 @@ public enum HTTPMethodType: String, Codable, CaseIterable, Identifiable {
     case get = "GET"
     case post = "POST"
     case put = "PUT"
-    case delete = "DELETE"
     case patch = "PATCH"
+    case delete = "DELETE"
     case head = "HEAD"
     case options = "OPTIONS"
     
@@ -27,6 +27,7 @@ public enum AssertionComparison: String, Codable, CaseIterable, Identifiable {
     case contains = "contains"
     case greaterThan = ">"
     case lessThan = "<"
+    case regexMatch = "matches regex"
     
     public var id: String { rawValue }
 }

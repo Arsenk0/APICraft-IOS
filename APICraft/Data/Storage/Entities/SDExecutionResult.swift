@@ -17,6 +17,11 @@ final class SDExecutionResult {
     @Relationship(deleteRule: .cascade)
     var assertionLogs: [SDAssertionLog] = []
     
+    var responseHeaders: [String: String]? {
+        guard let responseHeadersData else { return nil }
+        return (try? JSONSerialization.jsonObject(with: responseHeadersData, options: [])) as? [String: String]
+    }
+    
     init(
         statusCode: Int,
         responseDurationMs: Double,

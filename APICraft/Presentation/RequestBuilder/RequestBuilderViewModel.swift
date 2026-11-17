@@ -206,7 +206,12 @@ public final class RequestBuilderViewModel {
             components.queryItems = activeParams.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         if let newURL = components.string {
-            self.url = newURL
+            let decoded = newURL.removingPercentEncoding ?? newURL
+            self.url = decoded
+                .replacingOccurrences(of: "%7B%7B", with: "{{")
+                .replacingOccurrences(of: "%7D%7D", with: "}}")
+                .replacingOccurrences(of: "%7b%7b", with: "{{")
+                .replacingOccurrences(of: "%7d%7d", with: "}}")
         }
     }
     
@@ -214,7 +219,9 @@ public final class RequestBuilderViewModel {
         guard let components = URLComponents(string: url), let items = components.queryItems, !items.isEmpty else { return }
         var newParams: [RequestKeyValue] = []
         for item in items {
-            newParams.append(RequestKeyValue(key: item.name, value: item.value ?? "", isEnabled: true))
+            let key = item.name.removingPercentEncoding ?? item.name
+            let val = item.value?.removingPercentEncoding ?? (item.value ?? "")
+            newParams.append(RequestKeyValue(key: key, value: val, isEnabled: true))
         }
         if !newParams.isEmpty {
             self.queryParams = newParams
@@ -288,18 +295,11 @@ public final class RequestBuilderViewModel {
         
         self.response = netResponse
         
-        // Evaluate user-defined assertions dynamically (only if active assertions exist)
+        // Evaluate user-defined assertions dynamically without instantiating SDTestAssertion
         var evalLogs: [AssertionEvaluationResult] = []
         let activeAssertions = assertions.filter { $0.isEnabled }
         for a in activeAssertions {
-            let sdAssertion = SDTestAssertion(
-                target: a.target,
-                keyPath: a.keyPath,
-                comparison: a.comparison,
-                expectedValue: a.expectedValue,
-                isEnabled: a.isEnabled
-            )
-            evalLogs.append(AssertionEngine.evaluate(assertion: sdAssertion, response: netResponse))
+            evalLogs.append(AssertionEngine.evaluate(assertion: a, response: netResponse))
         }
         self.assertionLogs = evalLogs
         
@@ -335,12 +335,17 @@ public final class RequestBuilderViewModel {
             historyItem.assertions.append(p)
         }
         
-        let allPassed = evalLogs.isEmpty ? true : evalLogs.allSatisfy { $0.isPassed }
+        let allPassed = AssertionEngine.evaluateOverallSuccess(
+            evaluationResults: evalLogs,
+            statusCode: netResponse.statusCode
+        )
+        let headersData = try? JSONSerialization.data(withJSONObject: netResponse.headers)
         let execResult = SDExecutionResult(
             statusCode: netResponse.statusCode,
             responseDurationMs: netResponse.durationMs,
             responseBodySize: netResponse.sizeBytes,
             responseBody: netResponse.body,
+            responseHeadersData: headersData,
             isAllAssertionsPassed: allPassed
         )
         execResult.request = historyItem
@@ -352,11 +357,9 @@ public final class RequestBuilderViewModel {
                 isPassed: log.isPassed,
                 failureReason: log.failureReason
             )
-            context.insert(sLog)
             execResult.assertionLogs.append(sLog)
         }
         
-        context.insert(execResult)
         context.insert(historyItem)
         
         do {
@@ -455,7 +458,7 @@ public final class RequestKeyValue: Identifiable {
 }
 
 @Observable
-public final class RequestAssertionItem: Identifiable {
+public final class RequestAssertionItem: Identifiable, AssertionProtocol {
     public let id: UUID
     public var target: AssertionTarget
     public var comparison: AssertionComparison

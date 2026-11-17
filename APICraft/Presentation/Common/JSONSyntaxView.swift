@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 public struct JSONSyntaxView: View {
     let rawJSON: String
@@ -200,6 +201,7 @@ public struct JSONSyntaxView: View {
                         .font(.system(size: 12, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .keyboardType(.asciiCapable)
                     
                     if !searchText.isEmpty {
                         let matches = countMatches(in: formattedJSON, query: searchText)
@@ -316,5 +318,123 @@ public struct JSONSyntaxView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Safe Non-Intrusive Keyboard Extensions
+public extension View {
+    /// Resigns the first responder to dismiss any active keyboard cleanly
+    func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
+    /// Backward-compatible no-op that lets standard iOS touch handling and .scrollDismissesKeyboard work without touch theft
+    func dismissKeyboardOnTap() -> some View {
+        self
+    }
+}
+
+// MARK: - Telegram-Style Keyboard Paste Accessory Bar
+public struct TelegramKeyboardPasteBarView: View {
+    public var onPaste: ((String) -> Void)? = nil
+    @State private var hasClipboard: Bool = false
+    @State private var hasURL: Bool = false
+    
+    public init(onPaste: ((String) -> Void)? = nil) {
+        self.onPaste = onPaste
+    }
+    
+    public var body: some View {
+        HStack(spacing: 0) {
+            if hasClipboard {
+                Button {
+                    handlePaste()
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.blue.opacity(0.15))
+                                .frame(width: 26, height: 26)
+                            Image(systemName: hasURL ? "safari.fill" : "doc.on.clipboard.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.blue)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(hasURL ? "Paste URL" : "Paste from Clipboard")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            
+                            Text(hasURL ? "Tap to insert URL" : "Tap to paste text")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .onAppear {
+            checkClipboardSilently()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+            checkClipboardSilently()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            checkClipboardSilently()
+        }
+    }
+    
+    /// Silently checks metadata without triggering the iOS 16+ "Allow Paste" alert
+    private func checkClipboardSilently() {
+        hasClipboard = UIPasteboard.general.hasStrings
+        hasURL = UIPasteboard.general.hasURLs
+    }
+    
+    private func handlePaste() {
+        // Direct user tap: reading UIPasteboard.general.string is fully user-authorized
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
+        if let onPaste = onPaste {
+            onPaste(text)
+        } else {
+            let handled = UIApplication.shared.sendAction(#selector(UIResponder.paste(_:)), to: nil, from: nil, for: nil)
+            if !handled, let first = UIResponder.currentFirstKeyInput {
+                first.insertText(text)
+            }
+        }
+    }
+}
+
+public extension View {
+    /// Safe no-op to allow native Apple keyboard accessories and edit menus
+    func keyboardPasteBar(onPaste: ((String) -> Void)? = nil) -> some View {
+        self
+    }
+}
+
+public extension UIResponder {
+    private weak static var _currentFirstResponder: UIResponder?
+    
+    static var currentFirstKeyInput: UIKeyInput? {
+        _currentFirstResponder = nil
+        UIApplication.shared.sendAction(#selector(findFirstResponder(_:)), to: nil, from: nil, for: nil)
+        return _currentFirstResponder as? UIKeyInput
+    }
+    
+    @objc private func findFirstResponder(_ sender: Any) {
+        UIResponder._currentFirstResponder = self
     }
 }

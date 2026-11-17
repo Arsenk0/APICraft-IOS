@@ -2,13 +2,14 @@ import Foundation
 import SwiftData
 
 @Model
-final class SDTestAssertion {
+final class SDTestAssertion: AssertionProtocol {
     @Attribute(.unique) var id: UUID
     var target: AssertionTarget
     var keyPath: String?
     var comparison: AssertionComparison
     var expectedValue: String
     var isEnabled: Bool
+    var request: SDRequest?
     
     init(
         target: AssertionTarget,

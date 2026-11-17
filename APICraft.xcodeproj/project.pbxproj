@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F6012345678901 /* DeselectableURLField.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6012345678902 /* DeselectableURLField.swift */; };
 		0039AC580B6B5FB48897500C /* EnvironmentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD7DD60F30B51D0AB5D80EE /* EnvironmentListView.swift */; };
 		02E15BA68EC253CBB9AC7ED4 /* NetworkResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682CA96241C35DE7ABA8D4AD /* NetworkResponse.swift */; };
 		0791899DE99152B6B13546D8 /* SDRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF354512AC4F510CB208DCEF /* SDRequest.swift */; };
@@ -45,6 +46,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F6012345678902 /* DeselectableURLField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeselectableURLField.swift; sourceTree = "<group>"; };
 		00F92FCEF3BA522682673DED /* SDAssertionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SDAssertionLog.swift; sourceTree = "<group>"; };
 		07D36484AC995140AA068AC2 /* RequestDetailExecutionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestDetailExecutionView.swift; sourceTree = "<group>"; };
 		0C3681E27CC95913BFAC7B6B /* SDTestAssertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SDTestAssertion.swift; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 		8D5A925662A756DFAA414939 /* Common */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F6012345678902 /* DeselectableURLField.swift */,
 				51316C78E2585123AC96EAD3 /* JSONSyntaxView.swift */,
 				F60A031C71035ADE8D28A9D1 /* MethodBadgeView.swift */,
 				FD6044386EC3512893E67FA9 /* StatusBadgeView.swift */,
@@ -389,6 +392,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F6012345678901 /* DeselectableURLField.swift in Sources */,
 				846EAF6198665185967B0B64 /* APICraftApp.swift in Sources */,
 				ACF68EDAAC6054BF9FF42B15 /* MainTabView.swift in Sources */,
 				800753EA4BAF5BD2BB862A08 /* NativeNetworkClient.swift in Sources */,

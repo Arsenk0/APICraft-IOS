@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import SwiftData
 @testable import APICraft
 
 @Suite("Variable Resolver Tests")
@@ -109,6 +110,14 @@ struct CURLParserTests {
 @Suite("Assertion Engine Tests")
 struct AssertionEngineTests {
     
+    struct MockAssertion: AssertionProtocol {
+        var target: AssertionTarget
+        var keyPath: String?
+        var comparison: AssertionComparison
+        var expectedValue: String
+        var isEnabled: Bool = true
+    }
+    
     @Test("Status code equality and inequality")
     func testStatusCodeAssertions() {
         let response = NetworkResponse(
@@ -120,7 +129,7 @@ struct AssertionEngineTests {
             sizeBytes: 15
         )
         
-        let passAssertion = SDTestAssertion(
+        let passAssertion = MockAssertion(
             target: .statusCode,
             comparison: .equals,
             expectedValue: "200"
@@ -128,7 +137,7 @@ struct AssertionEngineTests {
         let passResult = AssertionEngine.evaluate(assertion: passAssertion, response: response)
         #expect(passResult.isPassed)
         
-        let failAssertion = SDTestAssertion(
+        let failAssertion = MockAssertion(
             target: .statusCode,
             comparison: .equals,
             expectedValue: "404"
@@ -141,7 +150,7 @@ struct AssertionEngineTests {
     @Test("Response time latency assertion")
     func testResponseTimeAssertion() {
         let fastResponse = NetworkResponse(statusCode: 200, headers: [:], cookies: [], body: nil, durationMs: 150.0, sizeBytes: 100)
-        let latencyAssertion = SDTestAssertion(
+        let latencyAssertion = MockAssertion(
             target: .responseTime,
             comparison: .lessThan,
             expectedValue: "300"
@@ -154,8 +163,8 @@ struct AssertionEngineTests {
         #expect(!slowResult.isPassed)
     }
     
-    @Test("Header equality and containment")
-    func testHeaderAssertion() {
+    @Test("Header equality, containment, and case-insensitivity per RFC 7230")
+    func testHeaderAssertionCaseInsensitive() {
         let response = NetworkResponse(
             statusCode: 200,
             headers: ["Content-Type": "application/json; charset=utf-8"],
@@ -165,17 +174,53 @@ struct AssertionEngineTests {
             sizeBytes: 20
         )
         
-        let headerAssertion = SDTestAssertion(
+        // Exact match
+        let exactAssertion = MockAssertion(
             target: .header,
             keyPath: "Content-Type",
             comparison: .contains,
             expectedValue: "application/json"
         )
-        let result = AssertionEngine.evaluate(assertion: headerAssertion, response: response)
-        #expect(result.isPassed)
+        #expect(AssertionEngine.evaluate(assertion: exactAssertion, response: response).isPassed)
+        
+        // Lowercase query
+        let lowerAssertion = MockAssertion(
+            target: .header,
+            keyPath: "content-type",
+            comparison: .contains,
+            expectedValue: "application/json"
+        )
+        #expect(AssertionEngine.evaluate(assertion: lowerAssertion, response: response).isPassed)
+        
+        // Uppercase query
+        let upperAssertion = MockAssertion(
+            target: .header,
+            keyPath: "CONTENT-TYPE",
+            comparison: .contains,
+            expectedValue: "application/json"
+        )
+        #expect(AssertionEngine.evaluate(assertion: upperAssertion, response: response).isPassed)
+        
+        // Regex match on header
+        let regexAssertion = MockAssertion(
+            target: .header,
+            keyPath: "content-type",
+            comparison: .regexMatch,
+            expectedValue: "application/[a-z]+"
+        )
+        #expect(AssertionEngine.evaluate(assertion: regexAssertion, response: response).isPassed)
+        
+        // Not equals on header
+        let notEqAssertion = MockAssertion(
+            target: .header,
+            keyPath: "content-type",
+            comparison: .notEquals,
+            expectedValue: "text/html"
+        )
+        #expect(AssertionEngine.evaluate(assertion: notEqAssertion, response: response).isPassed)
     }
     
-    @Test("Body substring containment")
+    @Test("Body substring containment, equality, not equals and regex")
     func testBodyContainsAssertion() {
         let response = NetworkResponse(
             statusCode: 200,
@@ -186,13 +231,26 @@ struct AssertionEngineTests {
             sizeBytes: 60
         )
         
-        let bodyAssertion = SDTestAssertion(
+        let bodyContains = MockAssertion(
             target: .bodyContains,
             comparison: .contains,
             expectedValue: "registered successfully"
         )
-        let result = AssertionEngine.evaluate(assertion: bodyAssertion, response: response)
-        #expect(result.isPassed)
+        #expect(AssertionEngine.evaluate(assertion: bodyContains, response: response).isPassed)
+        
+        let bodyNotEquals = MockAssertion(
+            target: .bodyContains,
+            comparison: .notEquals,
+            expectedValue: "Error"
+        )
+        #expect(AssertionEngine.evaluate(assertion: bodyNotEquals, response: response).isPassed)
+        
+        let bodyRegex = MockAssertion(
+            target: .bodyContains,
+            comparison: .regexMatch,
+            expectedValue: "User [a-z]+ successfully"
+        )
+        #expect(AssertionEngine.evaluate(assertion: bodyRegex, response: response).isPassed)
     }
     
     @Test("JSON Key existence and nested path lookup")
@@ -210,7 +268,7 @@ struct AssertionEngineTests {
         """
         let response = NetworkResponse(statusCode: 200, headers: [:], cookies: [], body: jsonString, durationMs: 50.0, sizeBytes: 100)
         
-        let keyAssertion = SDTestAssertion(
+        let keyAssertion = MockAssertion(
             target: .jsonKeyExists,
             keyPath: "data.profile.email",
             comparison: .equals,
@@ -219,7 +277,7 @@ struct AssertionEngineTests {
         let result = AssertionEngine.evaluate(assertion: keyAssertion, response: response)
         #expect(result.isPassed)
         
-        let arrayKeyAssertion = SDTestAssertion(
+        let arrayKeyAssertion = MockAssertion(
             target: .jsonKeyExists,
             keyPath: "data.roles[0]",
             comparison: .equals,
@@ -228,7 +286,7 @@ struct AssertionEngineTests {
         let arrayResult = AssertionEngine.evaluate(assertion: arrayKeyAssertion, response: response)
         #expect(arrayResult.isPassed)
         
-        let missingKeyAssertion = SDTestAssertion(
+        let missingKeyAssertion = MockAssertion(
             target: .jsonKeyExists,
             keyPath: "data.profile.phoneNumber",
             comparison: .equals,
@@ -238,20 +296,21 @@ struct AssertionEngineTests {
         #expect(!missingResult.isPassed)
     }
     
-    @Test("JSON Value comparison: string, equality and numbers")
+    @Test("JSON Value comparison: string, equality, numbers, and regex")
     func testJSONValueComparison() {
         let jsonString = """
         {
             "user": {
                 "id": 105,
                 "name": "Arsen",
+                "email": "arsen@example.com",
                 "score": 98.5
             }
         }
         """
         let response = NetworkResponse(statusCode: 200, headers: [:], cookies: [], body: jsonString, durationMs: 50.0, sizeBytes: 100)
         
-        let nameAssertion = SDTestAssertion(
+        let nameAssertion = MockAssertion(
             target: .jsonValue,
             keyPath: "user.name",
             comparison: .equals,
@@ -260,7 +319,7 @@ struct AssertionEngineTests {
         let nameResult = AssertionEngine.evaluate(assertion: nameAssertion, response: response)
         #expect(nameResult.isPassed)
         
-        let scoreAssertion = SDTestAssertion(
+        let scoreAssertion = MockAssertion(
             target: .jsonValue,
             keyPath: "user.score",
             comparison: .greaterThan,
@@ -268,6 +327,32 @@ struct AssertionEngineTests {
         )
         let scoreResult = AssertionEngine.evaluate(assertion: scoreAssertion, response: response)
         #expect(scoreResult.isPassed)
+        
+        let regexAssertion = MockAssertion(
+            target: .jsonValue,
+            keyPath: "user.email",
+            comparison: .regexMatch,
+            expectedValue: "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+        )
+        let regexResult = AssertionEngine.evaluate(assertion: regexAssertion, response: response)
+        #expect(regexResult.isPassed)
+    }
+    
+    @Test("AssertionEngine evaluateOverallSuccess handles empty and non-empty assertion lists")
+    func testEvaluateOverallSuccess() {
+        // Empty assertions: 2xx/3xx passes
+        #expect(AssertionEngine.evaluateOverallSuccess(evaluationResults: [], statusCode: 200))
+        #expect(AssertionEngine.evaluateOverallSuccess(evaluationResults: [], statusCode: 301))
+        #expect(!AssertionEngine.evaluateOverallSuccess(evaluationResults: [], statusCode: 404))
+        #expect(!AssertionEngine.evaluateOverallSuccess(evaluationResults: [], statusCode: 500))
+        
+        // Non-empty assertions: all must pass
+        let passLog = AssertionEvaluationResult(description: "OK", isPassed: true)
+        let failLog = AssertionEvaluationResult(description: "Failed", isPassed: false, failureReason: "Mismatch")
+        
+        #expect(AssertionEngine.evaluateOverallSuccess(evaluationResults: [passLog], statusCode: 200))
+        #expect(AssertionEngine.evaluateOverallSuccess(evaluationResults: [passLog], statusCode: 500))
+        #expect(!AssertionEngine.evaluateOverallSuccess(evaluationResults: [passLog, failLog], statusCode: 200))
     }
 }
 
@@ -276,8 +361,8 @@ struct HTTPMethodAndModelTests {
     
     @Test("All HTTPMethodType cases have valid colors and badge rawValues")
     func testAllHTTPMethods() {
-        let allMethods: [HTTPMethodType] = [.get, .post, .put, .patch, .delete, .head]
-        #expect(allMethods.count == 6)
+        let allMethods: [HTTPMethodType] = [.get, .post, .put, .patch, .delete, .head, .options]
+        #expect(allMethods.count == 7)
         
         for method in allMethods {
             _ = MethodBadgeView.color(for: method)
@@ -291,7 +376,14 @@ struct HTTPMethodAndModelTests {
         #expect(BodyType.none.rawValue == "None")
         #expect(BodyType.json.rawValue == "JSON")
         #expect(BodyType.urlEncoded.rawValue == "x-www-form-urlencoded")
+        #expect(BodyType.formData.rawValue == "Form Data")
         #expect(BodyType.allCases.count == 4)
+    }
+    
+    @Test("AssertionComparison cases include regexMatch")
+    func testAssertionComparisonCases() {
+        #expect(AssertionComparison.allCases.contains(.regexMatch))
+        #expect(AssertionComparison.regexMatch.rawValue == "matches regex")
     }
 }
 
@@ -315,5 +407,254 @@ struct ResponseCookieTests {
         #expect(cookie.path == "/")
         #expect(cookie.isSecure)
         #expect(cookie.isHTTPOnly)
+    }
+}
+
+@Suite("Collection Persistence Tests")
+@MainActor
+struct CollectionPersistenceTests {
+    
+    @Test("Save request to collection")
+    func testSaveToCollection() throws {
+        let schema = Schema([
+            SDCollection.self,
+            SDRequest.self,
+            SDRequestParameter.self,
+            SDTestAssertion.self,
+            SDExecutionResult.self,
+            SDAssertionLog.self,
+            SDEnvironment.self,
+            SDEnvironmentVariable.self
+        ])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let context = container.mainContext
+        
+        let col = SDCollection(name: "Test Col")
+        context.insert(col)
+        try context.save()
+        
+        let vm = RequestBuilderViewModel()
+        vm.url = "https://httpbin.org/get"
+        vm.queryParams = [RequestKeyValue(key: "foo", value: "bar", isEnabled: true)]
+        vm.headers = [RequestKeyValue(key: "X-Test", value: "1", isEnabled: true)]
+        vm.assertions = [RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "200")]
+        
+        vm.saveToCollection(collection: col, customTitle: "My Request", context: context)
+        
+        #expect(col.requests.count == 1)
+        #expect(col.requests.first?.title == "My Request")
+    }
+}
+
+
+@Suite("Real-World JSONPlaceholder & End-to-End Tests")
+struct RealWorldDataTests {
+    
+    @Test("Resolve URL with both raw and percent-encoded template variables")
+    func testResolveEncodedAndRawVariables() {
+        let envVars = [
+            "baseUrl": "https://jsonplaceholder.typicode.com",
+            "postId": "1"
+        ]
+        
+        // Raw template
+        let rawURL = "{{baseUrl}}/posts/{{postId}}"
+        let resolvedRaw = VariableResolver.resolve(text: rawURL, using: envVars)
+        #expect(resolvedRaw == "https://jsonplaceholder.typicode.com/posts/1")
+        
+        // Percent-encoded template (%7B%7B and %7D%7D) produced by URL components
+        let encodedURL = "%7B%7BbaseUrl%7D%7D/posts/%7B%7BpostId%7D%7D"
+        let resolvedEncoded = VariableResolver.resolve(text: encodedURL, using: envVars)
+        #expect(resolvedEncoded == "https://jsonplaceholder.typicode.com/posts/1")
+    }
+    
+    @Test("Validate JSONPlaceholder Post response with all assertion targets")
+    func testJSONPlaceholderPostAssertions() {
+        let realResponseBody = """
+        {
+            "userId": 1,
+            "id": 1,
+            "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+            "body": "quia et suscipit recusandae consequuntur expedita et cum reprehenderit"
+        }
+        """
+        
+        let response = NetworkResponse(
+            statusCode: 200,
+            headers: [
+                "Content-Type": "application/json; charset=utf-8",
+                "Server": "cloudflare"
+            ],
+            cookies: [],
+            body: realResponseBody,
+            durationMs: 142.0,
+            sizeBytes: realResponseBody.utf8.count
+        )
+        
+        // 1. Status Code 200
+        let statusAssertion = SDTestAssertion(target: .statusCode, comparison: .equals, expectedValue: "200")
+        let statusRes = AssertionEngine.evaluate(assertion: statusAssertion, response: response)
+        #expect(statusRes.isPassed)
+        
+        // 2. Response Time < 1000ms
+        let timeAssertion = SDTestAssertion(target: .responseTime, comparison: .lessThan, expectedValue: "1000")
+        let timeRes = AssertionEngine.evaluate(assertion: timeAssertion, response: response)
+        #expect(timeRes.isPassed)
+        
+        // 3. JSON Key Exists "title"
+        let titleKeyAssertion = SDTestAssertion(target: .jsonKeyExists, keyPath: "title", comparison: .equals, expectedValue: "title")
+        let titleKeyRes = AssertionEngine.evaluate(assertion: titleKeyAssertion, response: response)
+        #expect(titleKeyRes.isPassed)
+        
+        // 4. JSON Key Exists "userId"
+        let userIdKeyAssertion = SDTestAssertion(target: .jsonKeyExists, keyPath: "userId", comparison: .equals, expectedValue: "userId")
+        let userIdKeyRes = AssertionEngine.evaluate(assertion: userIdKeyAssertion, response: response)
+        #expect(userIdKeyRes.isPassed)
+        
+        // 5. JSON Value "id" == 1
+        let idValAssertion = SDTestAssertion(target: .jsonValue, keyPath: "id", comparison: .equals, expectedValue: "1")
+        let idValRes = AssertionEngine.evaluate(assertion: idValAssertion, response: response)
+        #expect(idValRes.isPassed)
+        
+        // 6. Header "Content-Type" contains "application/json"
+        let headerAssertion = SDTestAssertion(target: .header, keyPath: "Content-Type", comparison: .contains, expectedValue: "application/json")
+        let headerRes = AssertionEngine.evaluate(assertion: headerAssertion, response: response)
+        #expect(headerRes.isPassed)
+        
+        // 7. Body substring "sunt aut facere"
+        let bodyAssertion = SDTestAssertion(target: .bodyContains, comparison: .contains, expectedValue: "sunt aut facere")
+        let bodyRes = AssertionEngine.evaluate(assertion: bodyAssertion, response: response)
+        #expect(bodyRes.isPassed)
+    }
+    
+    @Test("Telegram-style clipboard parser identifies URLs, JSON, and cURL")
+    func testTelegramClipboardParser() {
+        // TikTok URL
+        let tiktokInfo = ClipboardPreviewInfo.make(from: "https://vt.tiktok.com/ZS1234567/")
+        #expect(tiktokInfo != nil)
+        #expect(tiktokInfo?.title == "vt.tiktok.com")
+        #expect(tiktokInfo?.subtitle == "Paste from TikTok")
+        #expect(tiktokInfo?.iconName == "safari.fill")
+        
+        // JSONPlaceholder URL
+        let typicodeInfo = ClipboardPreviewInfo.make(from: "https://jsonplaceholder.typicode.com/posts/1")
+        #expect(typicodeInfo != nil)
+        #expect(typicodeInfo?.title == "jsonplaceholder.typicode.com")
+        #expect(typicodeInfo?.subtitle == "Paste from Typicode")
+        
+        // JSON Body
+        let jsonInfo = ClipboardPreviewInfo.make(from: "{\"title\": \"New Post\", \"userId\": 1}")
+        #expect(jsonInfo != nil)
+        #expect(jsonInfo?.subtitle == "Paste JSON")
+        #expect(jsonInfo?.iconName == "curlybraces")
+        
+        // cURL Command
+        let curlInfo = ClipboardPreviewInfo.make(from: "curl -X GET \"https://jsonplaceholder.typicode.com/posts\"")
+        #expect(curlInfo != nil)
+        #expect(curlInfo?.title == "cURL Command")
+        #expect(curlInfo?.subtitle == "Paste cURL")
+        #expect(curlInfo?.iconName == "terminal.fill")
+    }
+    
+    @MainActor
+    @Test("SwiftData In-Memory Model Container: Collection, Request, Environment and Assertions")
+    func testSwiftDataCollectionAndEnvironmentIntegration() throws {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: SDCollection.self, SDRequest.self, SDRequestParameter.self, SDEnvironment.self, SDTestAssertion.self, configurations: config)
+        let context = container.mainContext
+        
+        // Create Environment
+        let env = SDEnvironment(name: "JSONPlaceholder Test")
+        let var1 = SDEnvironmentVariable(key: "baseUrl", value: "https://jsonplaceholder.typicode.com")
+        let var2 = SDEnvironmentVariable(key: "postId", value: "1")
+        var1.environment = env
+        var2.environment = env
+        env.variables = [var1, var2]
+        context.insert(env)
+        
+        // Create Collection & Request
+        let collection = SDCollection(name: "Posts API", details: "Integration tests for posts endpoints")
+        let request = SDRequest(
+            title: "Get Post by ID",
+            urlTemplate: "{{baseUrl}}/posts/{{postId}}",
+            method: .get,
+            bodyType: .none,
+            rawBodyContent: nil,
+            isHistoryItem: false
+        )
+        request.collection = collection
+        collection.requests.append(request)
+        
+        let assertion = SDTestAssertion(
+            target: .statusCode,
+            comparison: .equals,
+            expectedValue: "200"
+        )
+        request.assertions.append(assertion)
+        
+        context.insert(collection)
+        try context.save()
+        
+        // Verify query
+        let fetchDesc = FetchDescriptor<SDCollection>()
+        let fetchedCollections = try context.fetch(fetchDesc)
+        #expect(fetchedCollections.count == 1)
+        #expect(fetchedCollections.first?.requests.first?.assertions.count == 1)
+        
+        // Verify resolution
+        let varsMap = Dictionary(uniqueKeysWithValues: env.variables.map { ($0.key, $0.value) })
+        let finalURL = VariableResolver.resolve(text: request.urlTemplate, using: varsMap)
+        #expect(finalURL == "https://jsonplaceholder.typicode.com/posts/1")
+    }
+}
+
+@Suite("URL Sync & Decoding Tests")
+struct URLSyncAndDecodingTests {
+    
+    @Test("syncParamsToURL preserves Cyrillic and unicode characters without %D0% encoding")
+    @MainActor
+    func testSyncParamsToURLPreservesCyrillic() {
+        let vm = RequestBuilderViewModel()
+        vm.url = "https://example.com/пошук"
+        vm.queryParams = [
+            RequestKeyValue(key: "query", value: "Київ", isEnabled: true),
+            RequestKeyValue(key: "filter", value: "книги", isEnabled: true)
+        ]
+        
+        vm.syncParamsToURL()
+        
+        #expect(!vm.url.contains("%D0%"))
+        #expect(vm.url.contains("Київ"))
+        #expect(vm.url.contains("книги"))
+        #expect(vm.url.contains("пошук"))
+    }
+    
+    @Test("syncURLToParams decodes percent-encoded query items into human-readable text")
+    @MainActor
+    func testSyncURLToParamsDecodesPercentEncoding() {
+        let vm = RequestBuilderViewModel()
+        vm.url = "https://example.com/search?user=%D0%9C%D0%B0%D0%BA%D1%81%D0%B8%D0%BC&city=%D0%9A%D0%B8%D1%97%D0%B2"
+        
+        vm.syncURLToParams()
+        
+        #expect(vm.queryParams.count == 2)
+        #expect(vm.queryParams.first { $0.key == "user" }?.value == "Максим")
+        #expect(vm.queryParams.first { $0.key == "city" }?.value == "Київ")
+    }
+    
+    @Test("Arbitrary pasted text with Cyrillic characters is not corrupted by syncParamsToURL")
+    @MainActor
+    func testArbitraryPastedTextNotCorrupted() {
+        let vm = RequestBuilderViewModel()
+        let sample = "Максимка прийшов, сидим я ніхуя не роблю п він работає "
+        let clean = sample.removingPercentEncoding ?? sample
+        vm.url = clean
+        
+        // Calling syncParamsToURL directly should never corrupt raw text into %D0%
+        vm.syncParamsToURL()
+        
+        #expect(!vm.url.contains("%D0%9C%D0%B0"))
+        #expect(vm.url == sample)
     }
 }

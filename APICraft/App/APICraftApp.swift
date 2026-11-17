@@ -45,8 +45,16 @@ struct APICraftApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
-                .environment(\.locale, Locale(identifier: "en_US"))
+            ZStack {
+                MainTabView()
+                
+                if isSplashActive {
+                    SplashScreenView(isActive: $isSplashActive)
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
+            }
+            .environment(\.locale, Locale(identifier: "en_US"))
         }
         .modelContainer(sharedModelContainer)
     }
@@ -172,7 +180,7 @@ public struct SplashScreenView: View {
     }
     
     private func runAnimationSequence() {
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(.easeOut(duration: 0.5)) {
             logoScale = 1.0
             logoOpacity = 1.0
             textOpacity = 1.0
@@ -180,14 +188,14 @@ public struct SplashScreenView: View {
             statusText = "Ready"
         }
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
             dismissSplash()
         }
     }
     
     private func dismissSplash() {
         guard isActive else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
+        withAnimation(.easeOut(duration: 0.35)) {
             isActive = false
         }
     }

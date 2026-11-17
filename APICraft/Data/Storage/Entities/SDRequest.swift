@@ -14,10 +14,10 @@ final class SDRequest {
     
     var collection: SDCollection?
     
-    @Relationship(deleteRule: .cascade)
+    @Relationship(deleteRule: .cascade, inverse: \SDRequestParameter.request)
     var keyValues: [SDRequestParameter] = []
     
-    @Relationship(deleteRule: .cascade)
+    @Relationship(deleteRule: .cascade, inverse: \SDTestAssertion.request)
     var assertions: [SDTestAssertion] = []
     
     @Relationship(deleteRule: .cascade, inverse: \SDExecutionResult.request)

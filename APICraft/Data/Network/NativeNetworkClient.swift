@@ -51,6 +51,14 @@ public actor NativeNetworkClient {
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             } else if bodyType == .urlEncoded && request.value(forHTTPHeaderField: "Content-Type") == nil {
                 request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
+            } else if bodyType == .formData && request.value(forHTTPHeaderField: "Content-Type") == nil {
+                if let firstLine = body.components(separatedBy: .newlines).first(where: { $0.hasPrefix("--") && !$0.hasSuffix("--") }) {
+                    let boundary = String(firstLine.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+                } else {
+                    let boundary = "APICraftBoundary-\(UUID().uuidString.prefix(8))"
+                    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+                }
             }
         }
         

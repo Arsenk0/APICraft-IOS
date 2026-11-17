@@ -29,13 +29,22 @@ public struct RequestBuilderView: View {
     @State private var selectedCollectionForSave: SDCollection?
     @State private var showingNewColAlert = false
     @State private var newColName = ""
+    @State private var showingUnsavedAlert = false
     @FocusState private var isInputFocused: Bool
+    @State private var isURLFocused: Bool = false
+    
+    // Pasteboard observation & paste tracking
+    @State private var hasClipboardContent: Bool = false
+    @State private var lastPastedString: String? = nil
+    @State private var justPasted: Bool = false
     
     // cURL State
     @State private var showingCURLImportSheet = false
     @State private var curlImportText = ""
     @State private var curlImportError: String?
     @State private var showCopiedToast = false
+    @State private var showSavedToast = false
+    @State private var savedTargetName = ""
     
     private let starterPresets: [APIPreset] = [
         APIPreset(
@@ -181,6 +190,30 @@ public struct RequestBuilderView: View {
     
     public init() {}
     
+    private var canPaste: Bool {
+        guard hasClipboardContent else { return false }
+        let currentTrimmed = viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentDecoded = currentTrimmed.removingPercentEncoding ?? currentTrimmed
+        
+        if let last = lastPastedString {
+            if currentTrimmed == last || currentDecoded == last {
+                return false
+            }
+        }
+        return true
+    }
+    
+    private var hasUnsavedChanges: Bool {
+        let trimmed = viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isDefaultURL = trimmed.isEmpty || trimmed == "https://" || trimmed == "https://jsonplaceholder.typicode.com/todos/1"
+        if !isDefaultURL { return true }
+        if !viewModel.queryParams.isEmpty { return true }
+        if viewModel.bodyType != .none && !viewModel.bodyText.isEmpty { return true }
+        if viewModel.authType != .none { return true }
+        if viewModel.response != nil { return true }
+        return false
+    }
+    
     private var activeTab: Int {
         if selectedTab == 5 && viewModel.response == nil {
             return 0
@@ -192,235 +225,14 @@ public struct RequestBuilderView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    // 1. Environment Banner
-                    if let activeEnv = activeEnvironments.first {
-                        HStack(spacing: 8) {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.caption.bold())
-                                .foregroundStyle(.green)
-                            Text("Environment: \(activeEnv.name)")
-                                .font(.caption.bold())
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Text("\(activeEnv.variables.count) vars")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.green.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .padding(.horizontal, 16)
-                    }
+                    environmentBanner
                     
-                    // 2. Request Command Hero Card
+                    // Request Command Hero Card
                     VStack(spacing: 12) {
-                        // Method Selector Chips
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(HTTPMethodType.allCases) { m in
-                                    let isSelected = viewModel.method == m
-                                    let color = MethodBadgeView.color(for: m)
-                                    Button {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        withAnimation(.snappy(duration: 0.2)) {
-                                            viewModel.method = m
-                                            if (m == .post || m == .put || m == .patch) && viewModel.bodyType == .none {
-                                                viewModel.bodyType = .json
-                                            }
-                                        }
-                                    } label: {
-                                        Text(m.rawValue)
-                                            .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 7)
-                                            .background(
-                                                isSelected
-                                                    ? color
-                                                    : color.opacity(0.14)
-                                            )
-                                            .foregroundStyle(isSelected ? Color.white : color)
-                                            .clipShape(Capsule())
-                                            .overlay(
-                                                Capsule()
-                                                    .stroke(color.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 2)
-                        }
-                        
-                        // Adaptive URL Input Field with Interactive Scheme Switcher
-                        HStack(alignment: .center, spacing: 6) {
-                            let isHTTPS = viewModel.url.lowercased().hasPrefix("https://")
-                            let isHTTP = viewModel.url.lowercased().hasPrefix("http://")
-                            
-                            Menu {
-                                Button {
-                                    switchProtocol(to: "https://")
-                                } label: {
-                                    Label("https:// (Secure SSL)", systemImage: "lock.fill")
-                                }
-                                Button {
-                                    switchProtocol(to: "http://")
-                                } label: {
-                                    Label("http:// (Unencrypted / Local)", systemImage: "lock.slash")
-                                }
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: isHTTPS ? "lock.fill" : (isHTTP ? "lock.slash" : "globe"))
-                                        .font(.system(size: 11, weight: .bold))
-                                    Text(isHTTPS ? "HTTPS" : (isHTTP ? "HTTP" : "SCHEME"))
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 7, weight: .bold))
-                                }
-                                .foregroundStyle(isHTTPS ? Color.green : (isHTTP ? Color.orange : Color.secondary))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 5)
-                                .background((isHTTPS ? Color.green : (isHTTP ? Color.orange : Color.primary)).opacity(0.12))
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.leading, 8)
-                            
-                            TextField("https://api.example.com/v1/resource", text: $viewModel.url, axis: .vertical)
-                                .font(.system(size: 14, design: .monospaced))
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .keyboardType(.asciiCapable)
-                                .focused($isInputFocused)
-                                .lineLimit(1...3)
-                                .padding(.vertical, 8)
-                            
-                            if !viewModel.url.isEmpty {
-                                Button {
-                                    viewModel.url = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.trailing, 8)
-                            } else if UIPasteboard.general.hasStrings {
-                                Button {
-                                    if let pasteString = UIPasteboard.general.string {
-                                        viewModel.url = pasteString
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    }
-                                } label: {
-                                    Text("Paste")
-                                        .font(.caption2.bold())
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.primary.opacity(0.08))
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.trailing, 8)
-                            }
-                        }
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        
-                        // Starter API presets for beginners
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Label("Quick API Presets", systemImage: "sparkles")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    ForEach(starterPresets) { preset in
-                                        Button {
-                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                            withAnimation(.snappy) {
-                                                viewModel.method = preset.method
-                                                viewModel.url = preset.url
-                                                viewModel.headers = preset.headers
-                                                viewModel.queryParams = preset.queryParams
-                                                viewModel.bodyType = preset.bodyType
-                                                viewModel.bodyText = preset.sampleBody ?? ""
-                                                viewModel.assertions = preset.sampleAssertions
-                                                viewModel.response = nil
-                                                viewModel.assertionLogs = []
-                                            }
-                                        } label: {
-                                            HStack(spacing: 4) {
-                                                Text(preset.method.rawValue)
-                                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                                    .foregroundStyle(MethodBadgeView.color(for: preset.method))
-                                                Text(preset.name)
-                                                    .font(.system(size: 11, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                            }
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(Color(.secondarySystemBackground))
-                                            .clipShape(Capsule())
-                                            .overlay(
-                                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Execute Request Button
-                        Button {
-                            isInputFocused = false
-                            Task {
-                                await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    selectedTab = 5 // Auto-switch to "Response"
-                                }
-                                let haptic = UINotificationFeedbackGenerator()
-                                if let code = viewModel.response?.statusCode, code >= 200 && code < 400 {
-                                    haptic.notificationOccurred(.success)
-                                } else {
-                                    haptic.notificationOccurred(.warning)
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if viewModel.isLoading {
-                                    ProgressView()
-                                        .tint(.white)
-                                    Text("Sending...")
-                                        .font(.system(size: 15, weight: .bold))
-                                } else {
-                                    Image(systemName: "paperplane.fill")
-                                        .font(.system(size: 14, weight: .bold))
-                                    Text("Send Request")
-                                        .font(.system(size: 15, weight: .bold))
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(
-                                LinearGradient(
-                                    colors: [
-                                        MethodBadgeView.color(for: viewModel.method),
-                                        MethodBadgeView.color(for: viewModel.method).opacity(0.85)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .shadow(color: MethodBadgeView.color(for: viewModel.method).opacity(0.3), radius: 6, y: 2)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(viewModel.isLoading || viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .opacity(viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
+                        methodChipsSection
+                        urlInputSection
+                        presetsSection
+                        sendButtonSection
                     }
                     .padding(14)
                     .background(Color(.systemBackground))
@@ -431,11 +243,11 @@ public struct RequestBuilderView: View {
                     )
                     .padding(.horizontal, 16)
                     
-                    // 3. Segmented Navigation Bar (Fits all tabs and dynamically reveals Response)
+                    // Segmented Navigation Bar
                     customTabBar
                         .padding(.horizontal, 16)
                     
-                    // 4. Tab Content Body
+                    // Tab Content Body
                     VStack {
                         switch activeTab {
                         case 0:
@@ -459,40 +271,21 @@ public struct RequestBuilderView: View {
                 }
                 .padding(.top, 8)
             }
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    isInputFocused = false
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            )
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("APICraft")
             .navigationBarTitleDisplayMode(.inline)
             .overlay(alignment: .top) {
-                if showCopiedToast {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("cURL copied to clipboard")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.primary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
-                    .padding(.top, 6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
+                toastOverlay
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        withAnimation {
+                        if hasUnsavedChanges {
+                            showingUnsavedAlert = true
+                        } else {
                             viewModel.resetToNew()
+                            lastPastedString = nil
                             selectedTab = 0
                         }
                     } label: {
@@ -506,16 +299,18 @@ public struct RequestBuilderView: View {
                 }
                 
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    // cURL Menu (Export / Import)
                     Menu {
                         Button {
+                            isInputFocused = false
                             let curl = viewModel.exportAsCURL()
                             UIPasteboard.general.string = curl
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             withAnimation(.spring) {
                                 showCopiedToast = true
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                withAnimation(.easeInOut) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                withAnimation {
                                     showCopiedToast = false
                                 }
                             }
@@ -524,8 +319,8 @@ public struct RequestBuilderView: View {
                         }
                         
                         Button {
-                            let clip = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                            curlImportText = clip.lowercased().hasPrefix("curl") ? clip : ""
+                            isInputFocused = false
+                            curlImportText = ""
                             curlImportError = nil
                             showingCURLImportSheet = true
                         } label: {
@@ -546,16 +341,21 @@ public struct RequestBuilderView: View {
                             .font(.system(size: 15, weight: .medium))
                     }
                 }
-                
-                // Keyboard Toolbar only contains "Done" to dismiss without interfering with other fields
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        isInputFocused = false
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                    }
-                    .font(.subheadline.bold())
+            }
+            .alert("Unsaved Request", isPresented: $showingUnsavedAlert) {
+                Button("Save to Collection") {
+                    requestSaveTitle = viewModel.title.isEmpty ? viewModel.resolveTitle() : viewModel.title
+                    selectedCollectionForSave = collections.first
+                    showingSaveSheet = true
                 }
+                Button("Discard & Create New", role: .destructive) {
+                    viewModel.resetToNew()
+                    lastPastedString = nil
+                    selectedTab = 0
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You have unsaved changes in your current request. Do you want to save them to a collection or discard them?")
             }
             .sheet(isPresented: $showingSaveSheet) {
                 saveToCollectionSheet
@@ -564,11 +364,22 @@ public struct RequestBuilderView: View {
                 curlImportSheet
             }
             .onAppear {
+                refreshClipboardStatus()
                 if let pending = AppNavigationState.shared.pendingLoadRequest {
                     viewModel.loadFrom(request: pending)
                     selectedTab = pending.bodyType != .none ? 3 : 0
                     AppNavigationState.shared.pendingLoadRequest = nil
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIPasteboard.changedNotification)) { _ in
+                lastPastedString = nil
+                refreshClipboardStatus()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                refreshClipboardStatus()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                refreshClipboardStatus()
             }
             .onChange(of: AppNavigationState.shared.pendingLoadRequest) { _, newReq in
                 if let req = newReq {
@@ -578,6 +389,336 @@ public struct RequestBuilderView: View {
                 }
             }
         }
+    }
+    
+    @ViewBuilder
+    private var environmentBanner: some View {
+        if let activeEnv = activeEnvironments.first {
+            HStack(spacing: 8) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.caption.bold())
+                    .foregroundStyle(.green)
+                Text("Environment: \(activeEnv.name)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("\(activeEnv.variables.count) vars")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.green.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 16)
+        }
+    }
+    
+    private var methodChipsSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(HTTPMethodType.allCases) { m in
+                    let isSelected = viewModel.method == m
+                    let color = MethodBadgeView.color(for: m)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.snappy(duration: 0.2)) {
+                            viewModel.method = m
+                            if (m == .post || m == .put || m == .patch) && viewModel.bodyType == .none {
+                                viewModel.bodyType = .json
+                            }
+                        }
+                    } label: {
+                        Text(m.rawValue)
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(isSelected ? color : color.opacity(0.14))
+                            .foregroundStyle(isSelected ? Color.white : color)
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(color.opacity(isSelected ? 0 : 0.3), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+    
+    private var urlInputSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                let isHTTPS = viewModel.url.lowercased().hasPrefix("https://")
+                let isHTTP = viewModel.url.lowercased().hasPrefix("http://")
+                
+                Menu {
+                    Button {
+                        switchProtocol(to: "https://")
+                    } label: {
+                        Label("https:// (Secure SSL)", systemImage: "lock.fill")
+                    }
+                    Button {
+                        switchProtocol(to: "http://")
+                    } label: {
+                        Label("http:// (Unencrypted / Local)", systemImage: "lock.slash")
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isHTTPS ? "lock.fill" : (isHTTP ? "lock.slash" : "globe"))
+                            .font(.system(size: 12, weight: .bold))
+                        Text(isHTTPS ? "HTTPS" : (isHTTP ? "HTTP" : "SCHEME"))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(isHTTPS ? Color.green : (isHTTP ? Color.orange : Color.secondary))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background((isHTTPS ? Color.green : (isHTTP ? Color.orange : Color.primary)).opacity(0.12))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                
+                DeselectableURLField(
+                    text: $viewModel.url,
+                    placeholder: "https://api.example.com/v1/resource",
+                    onCommit: {
+                        if viewModel.url.contains("?") {
+                            viewModel.syncURLToParams()
+                        }
+                    },
+                    onFocusChange: { focused in
+                        isURLFocused = focused
+                    }
+                )
+                .frame(minHeight: 34, maxHeight: 86)
+                .padding(.vertical, 4)
+                
+                HStack(spacing: 6) {
+                    if justPasted {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("Pasted")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.green.opacity(0.14))
+                        .foregroundStyle(Color.green)
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.green.opacity(0.35), lineWidth: 1)
+                        )
+                    } else {
+                        PasteButton(payloadType: String.self) { strings in
+                            guard let rawPaste = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines), !rawPaste.isEmpty else { return }
+                            let cleanPaste = rawPaste.removingPercentEncoding ?? rawPaste
+                            viewModel.url = cleanPaste
+                            lastPastedString = cleanPaste
+                            if cleanPaste.contains("?") {
+                                viewModel.syncURLToParams()
+                            } else {
+                                viewModel.queryParams.removeAll()
+                            }
+                            withAnimation(.snappy) {
+                                justPasted = true
+                            }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                withAnimation(.snappy) {
+                                    justPasted = false
+                                }
+                            }
+                        }
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
+                        .tint(canPaste ? Color.blue : Color.secondary.opacity(0.4))
+                        .disabled(!canPaste)
+                    }
+                    
+                    if !viewModel.url.isEmpty {
+                        Button {
+                            viewModel.url = ""
+                            lastPastedString = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 6)
+                    }
+                }
+            }
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isURLFocused ? Color.blue.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: isURLFocused ? 1.5 : 1)
+            )
+            
+            // Visual indicator showing that the URL field expands and is scrollable
+            if viewModel.url.count > 35 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.and.down.text.horizontal")
+                        .font(.system(size: 9, weight: .bold))
+                    Text("Expands & scrollable")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    Spacer()
+                    Text("\(viewModel.url.count) chars")
+                        .font(.system(size: 9, design: .monospaced))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .transition(.opacity)
+            }
+        }
+    }
+    
+    private var presetsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Quick API Presets", systemImage: "sparkles")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(starterPresets) { preset in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.snappy) {
+                                viewModel.method = preset.method
+                                viewModel.url = preset.url
+                                viewModel.headers = preset.headers
+                                viewModel.queryParams = preset.queryParams
+                                viewModel.bodyType = preset.bodyType
+                                viewModel.bodyText = preset.sampleBody ?? ""
+                                viewModel.assertions = preset.sampleAssertions
+                                viewModel.response = nil
+                                viewModel.assertionLogs = []
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(preset.method.rawValue)
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(MethodBadgeView.color(for: preset.method))
+                                Text(preset.name)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.primary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.secondarySystemBackground))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var sendButtonSection: some View {
+        Button {
+            isInputFocused = false
+            Task {
+                await viewModel.sendRequest(context: modelContext, activeEnv: activeEnvironments.first)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    selectedTab = 5 // Auto-switch to "Response"
+                }
+                let haptic = UINotificationFeedbackGenerator()
+                if let code = viewModel.response?.statusCode, code >= 200 && code < 400 {
+                    haptic.notificationOccurred(.success)
+                } else {
+                    haptic.notificationOccurred(.warning)
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if viewModel.isLoading {
+                    ProgressView()
+                        .tint(.white)
+                    Text("Sending...")
+                        .font(.system(size: 15, weight: .bold))
+                } else {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Send Request")
+                        .font(.system(size: 15, weight: .bold))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                LinearGradient(
+                    colors: [
+                        MethodBadgeView.color(for: viewModel.method),
+                        MethodBadgeView.color(for: viewModel.method).opacity(0.85)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .shadow(color: MethodBadgeView.color(for: viewModel.method).opacity(0.3), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isLoading || viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .opacity(viewModel.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.6 : 1.0)
+    }
+    
+    @ViewBuilder
+    private var toastOverlay: some View {
+        VStack(spacing: 8) {
+            if showCopiedToast {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("cURL copied to clipboard")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(color: Color.black.opacity(0.12), radius: 8, y: 3)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            
+            if showSavedToast {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.badge.checkmark")
+                        .foregroundStyle(.blue)
+                    Text("Saved to '\(savedTargetName)'")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
+                .shadow(color: Color.black.opacity(0.12), radius: 8, y: 3)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .padding(.top, 8)
+    }
+    
+    private func refreshClipboardStatus() {
+        hasClipboardContent = UIPasteboard.general.hasStrings
     }
     
     private func switchProtocol(to scheme: String) {
@@ -728,7 +869,7 @@ public struct RequestBuilderView: View {
                             }
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 13))
+                                .font(.caption)
                                 .foregroundStyle(.red.opacity(0.8))
                         }
                         .buttonStyle(.plain)
@@ -759,15 +900,9 @@ public struct RequestBuilderView: View {
     // MARK: - Auth Tab
     private var authTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Authorization Type")
-                    .font(.subheadline.bold())
-                Spacer()
-            }
-            
             Picker("Auth Type", selection: $viewModel.authType) {
-                ForEach(RequestAuthType.allCases) { type in
-                    Text(type.rawValue).tag(type)
+                ForEach(RequestAuthType.allCases) { a in
+                    Text(a.rawValue).tag(a)
                 }
             }
             .pickerStyle(.segmented)
@@ -776,23 +911,22 @@ public struct RequestBuilderView: View {
             case .none:
                 VStack(spacing: 8) {
                     Image(systemName: "lock.open")
-                        .font(.system(size: 32))
+                        .font(.system(size: 36))
                         .foregroundStyle(.secondary)
                     Text("No Authorization")
                         .font(.subheadline.bold())
                         .foregroundStyle(.secondary)
-                    Text("This request will not carry any credentials or Authorization headers.")
+                    Text("This request does not include any authorization headers.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
-                .background(Color(.secondarySystemBackground).opacity(0.5))
+                .padding(.vertical, 32)
+                .background(Color(.secondarySystemBackground).opacity(0.4))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 
             case .bearer:
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("Bearer Token")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
@@ -885,6 +1019,7 @@ public struct RequestBuilderView: View {
                             .focused($isInputFocused)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .keyboardType(.asciiCapable)
                         
                         TextField("Value", text: $viewModel.apiKeyValue)
                             .font(.system(size: 13, design: .monospaced))
@@ -894,6 +1029,7 @@ public struct RequestBuilderView: View {
                             .focused($isInputFocused)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .keyboardType(.asciiCapable)
                     }
                 }
                 .padding(12)
@@ -907,7 +1043,7 @@ public struct RequestBuilderView: View {
     private var headersTab: some View {
         VStack(spacing: 12) {
             HStack {
-                Text("Headers")
+                Text("HTTP Headers")
                     .font(.subheadline.bold())
                 Spacer()
                 if !viewModel.headers.isEmpty {
@@ -922,19 +1058,19 @@ public struct RequestBuilderView: View {
             }
             
             if viewModel.headers.isEmpty {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Image(systemName: "list.bullet.rectangle")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
-                    Text("No Headers Configured")
+                    Text("No Custom Headers")
                         .font(.subheadline.bold())
                         .foregroundStyle(.secondary)
-                    Text("Standard HTTP headers like Content-Type or Custom-Header can be defined here.")
+                    Text("Common headers like User-Agent and Host are sent automatically.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
                 }
-                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
             } else {
                 ForEach(viewModel.headers) { item in
                     @Bindable var bindableItem = item
@@ -952,7 +1088,7 @@ public struct RequestBuilderView: View {
                                 }
                             } label: {
                                 Image(systemName: "trash")
-                                    .font(.system(size: 13))
+                                    .font(.caption)
                                     .foregroundStyle(.red.opacity(0.8))
                             }
                             .buttonStyle(.plain)
@@ -1009,7 +1145,6 @@ public struct RequestBuilderView: View {
     // MARK: - Body Tab
     private var bodyTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Body Format Selector
             Picker("Body Format", selection: $viewModel.bodyType) {
                 ForEach(BodyType.allCases) { b in
                     Text(b.rawValue).tag(b)
@@ -1043,7 +1178,6 @@ public struct RequestBuilderView: View {
                 .background(Color(.secondarySystemBackground).opacity(0.4))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
-                // Toolbar above text editor
                 HStack(spacing: 8) {
                     if viewModel.bodyType == .json {
                         Text("application/json")
@@ -1052,6 +1186,22 @@ public struct RequestBuilderView: View {
                             .padding(.vertical, 2)
                             .background(Color.blue.opacity(0.12))
                             .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                    } else if viewModel.bodyType == .urlEncoded {
+                        Text("x-www-form-urlencoded")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.12))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    } else if viewModel.bodyType == .formData {
+                        Text("multipart/form-data")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.12))
+                            .foregroundStyle(.purple)
                             .clipShape(Capsule())
                     }
                     
@@ -1104,10 +1254,9 @@ public struct RequestBuilderView: View {
         }
     }
     
-    // MARK: - Tests / Assertions Tab (Balanced full-width controls)
+    // MARK: - Tests / Assertions Tab
     private var testsTab: some View {
         VStack(spacing: 12) {
-            // Quick Presets
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     Button("+ Status 200") {
@@ -1118,17 +1267,25 @@ public struct RequestBuilderView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     
-                    Button("+ Status 201") {
+                    Button("+ Key 'title'") {
                         withAnimation {
-                            viewModel.assertions.append(RequestAssertionItem(target: .statusCode, comparison: .equals, expectedValue: "201"))
+                            viewModel.assertions.append(RequestAssertionItem(target: .jsonKeyExists, comparison: .equals, expectedValue: "title", keyPath: "title"))
                         }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     
-                    Button("+ Time < 500ms") {
+                    Button("+ JSON 'id' == 1") {
                         withAnimation {
-                            viewModel.assertions.append(RequestAssertionItem(target: .responseTime, comparison: .lessThan, expectedValue: "500"))
+                            viewModel.assertions.append(RequestAssertionItem(target: .jsonValue, comparison: .equals, expectedValue: "1", keyPath: "id"))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    Button("+ Time < 1000ms") {
+                        withAnimation {
+                            viewModel.assertions.append(RequestAssertionItem(target: .responseTime, comparison: .lessThan, expectedValue: "1000"))
                         }
                     }
                     .buttonStyle(.bordered)
@@ -1136,7 +1293,7 @@ public struct RequestBuilderView: View {
                     
                     Button("+ Body contains") {
                         withAnimation {
-                            viewModel.assertions.append(RequestAssertionItem(target: .bodyContains, comparison: .contains, expectedValue: "id"))
+                            viewModel.assertions.append(RequestAssertionItem(target: .bodyContains, comparison: .contains, expectedValue: "title"))
                         }
                     }
                     .buttonStyle(.bordered)
@@ -1167,9 +1324,40 @@ public struct RequestBuilderView: View {
                                 .labelsHidden()
                                 .tint(.green)
                             
-                            // Target selector that stretches flexibly to fill space
                             Menu {
-                                Picker("Target", selection: $bindableItem.target) {
+                                Picker("Target", selection: Binding(
+                                    get: { bindableItem.target },
+                                    set: { newTarget in
+                                        bindableItem.target = newTarget
+                                        switch newTarget {
+                                        case .statusCode:
+                                            bindableItem.expectedValue = "200"
+                                            bindableItem.comparison = .equals
+                                        case .responseTime:
+                                            bindableItem.expectedValue = "1000"
+                                            bindableItem.comparison = .lessThan
+                                        case .header:
+                                            if bindableItem.keyPath == nil || bindableItem.keyPath?.isEmpty == true {
+                                                bindableItem.keyPath = "Content-Type"
+                                            }
+                                            bindableItem.expectedValue = "application/json"
+                                            bindableItem.comparison = .contains
+                                        case .bodyContains:
+                                            bindableItem.expectedValue = "title"
+                                            bindableItem.comparison = .contains
+                                        case .jsonKeyExists:
+                                            bindableItem.expectedValue = "title"
+                                            bindableItem.keyPath = "title"
+                                            bindableItem.comparison = .equals
+                                        case .jsonValue:
+                                            if bindableItem.keyPath == nil || bindableItem.keyPath?.isEmpty == true {
+                                                bindableItem.keyPath = "id"
+                                            }
+                                            bindableItem.expectedValue = "1"
+                                            bindableItem.comparison = .equals
+                                        }
+                                    }
+                                )) {
                                     ForEach(AssertionTarget.allCases) { t in
                                         Text(t.rawValue).tag(t)
                                     }
@@ -1192,7 +1380,6 @@ public struct RequestBuilderView: View {
                             }
                             .frame(maxWidth: .infinity)
                             
-                            // Comparison operator selector or stable badge
                             if bindableItem.target != .bodyContains {
                                 Menu {
                                     Picker("Comparison", selection: $bindableItem.comparison) {
@@ -1238,24 +1425,155 @@ public struct RequestBuilderView: View {
                             .buttonStyle(.plain)
                         }
                         
-                        HStack(spacing: 8) {
-                            Text(bindableItem.target == .bodyContains ? "Substring:" : "Expected:")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 75, alignment: .leading)
-                            
-                            TextField(
-                                bindableItem.target == .statusCode ? "200" :
-                                (bindableItem.target == .responseTime ? "500" : "text to match"),
-                                text: $bindableItem.expectedValue
-                            )
-                            .font(.system(size: 13, design: .monospaced))
-                            .padding(8)
-                            .background(Color(.tertiarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .focused($isInputFocused)
-                            .autocorrectionDisabled()
-                            .keyboardType(bindableItem.target == .statusCode || bindableItem.target == .responseTime ? .numberPad : .asciiCapable)
+                        if bindableItem.target == .statusCode {
+                            HStack(spacing: 8) {
+                                Text("Status:")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 75, alignment: .leading)
+                                
+                                TextField("200", text: $bindableItem.expectedValue)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .focused($isInputFocused)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.asciiCapableNumberPad)
+                            }
+                        } else if bindableItem.target == .responseTime {
+                            HStack(spacing: 8) {
+                                Text("Max (ms):")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 75, alignment: .leading)
+                                
+                                TextField("1000", text: $bindableItem.expectedValue)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .focused($isInputFocused)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.asciiCapableNumberPad)
+                            }
+                        } else if bindableItem.target == .bodyContains {
+                            HStack(spacing: 8) {
+                                Text("Substring:")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 75, alignment: .leading)
+                                
+                                TextField("e.g. title or userId", text: $bindableItem.expectedValue)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .focused($isInputFocused)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.asciiCapable)
+                            }
+                        } else if bindableItem.target == .jsonKeyExists {
+                            HStack(spacing: 8) {
+                                Text("Key Path:")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 75, alignment: .leading)
+                                
+                                TextField("e.g. title or id", text: $bindableItem.expectedValue)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .focused($isInputFocused)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.asciiCapable)
+                                    .onChange(of: bindableItem.expectedValue) {
+                                        bindableItem.keyPath = bindableItem.expectedValue
+                                    }
+                            }
+                        } else if bindableItem.target == .jsonValue {
+                            VStack(spacing: 6) {
+                                HStack(spacing: 8) {
+                                    Text("Key Path:")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 75, alignment: .leading)
+                                    
+                                    TextField("e.g. id or title", text: Binding(
+                                        get: { bindableItem.keyPath ?? "" },
+                                        set: { bindableItem.keyPath = $0 }
+                                    ))
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .focused($isInputFocused)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.asciiCapable)
+                                }
+                                
+                                HStack(spacing: 8) {
+                                    Text("Expected:")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 75, alignment: .leading)
+                                    
+                                    TextField("e.g. 1 or true", text: $bindableItem.expectedValue)
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .padding(8)
+                                        .background(Color(.tertiarySystemBackground))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .focused($isInputFocused)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.never)
+                                        .keyboardType(.asciiCapable)
+                                }
+                            }
+                        } else if bindableItem.target == .header {
+                            VStack(spacing: 6) {
+                                HStack(spacing: 8) {
+                                    Text("Header:")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                    .frame(width: 75, alignment: .leading)
+                                    
+                                    TextField("e.g. Content-Type", text: Binding(
+                                        get: { bindableItem.keyPath ?? "" },
+                                        set: { bindableItem.keyPath = $0 }
+                                    ))
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .focused($isInputFocused)
+                                    .autocorrectionDisabled()
+                                    .textInputAutocapitalization(.never)
+                                    .keyboardType(.asciiCapable)
+                                }
+                                
+                                HStack(spacing: 8) {
+                                    Text("Expected:")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 75, alignment: .leading)
+                                    
+                                    TextField("e.g. application/json", text: $bindableItem.expectedValue)
+                                        .font(.system(size: 13, design: .monospaced))
+                                        .padding(8)
+                                        .background(Color(.tertiarySystemBackground))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .focused($isInputFocused)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.never)
+                                        .keyboardType(.asciiCapable)
+                                }
+                            }
                         }
                     }
                     .padding(10)
@@ -1288,7 +1606,6 @@ public struct RequestBuilderView: View {
     private var responseTab: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let resp = viewModel.response {
-                // Metrics Card
                 HStack(spacing: 8) {
                     StatusBadgeView(statusCode: resp.statusCode, showText: true)
                     
@@ -1316,7 +1633,6 @@ public struct RequestBuilderView: View {
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 
-                // Error Card (if any failure occurred)
                 if let err = resp.error, !err.isEmpty {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -1324,75 +1640,67 @@ public struct RequestBuilderView: View {
                             .font(.title3)
                             .padding(.top, 2)
                         
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Request Failed")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Network Error")
                                 .font(.subheadline.bold())
                                 .foregroundStyle(.red)
                             Text(err)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.primary)
                         }
-                        Spacer()
                     }
                     .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.red.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                // Assertions Results (Clean aligned layout)
+                // Assertions Results Card
                 if !viewModel.assertionLogs.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
                         let passedCount = viewModel.assertionLogs.filter { $0.isPassed }.count
+                        let totalCount = viewModel.assertionLogs.count
+                        let allPassed = passedCount == totalCount
+                        
                         HStack {
-                            Text("Test Results")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
+                            Image(systemName: allPassed ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(allPassed ? .green : .red)
+                            Text("Tests: \(passedCount)/\(totalCount) Passed")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(allPassed ? .green : .red)
                             Spacer()
-                            Text("\(passedCount)/\(viewModel.assertionLogs.count) Passed")
-                                .font(.caption2.bold())
-                                .foregroundStyle(passedCount == viewModel.assertionLogs.count ? .green : .orange)
                         }
                         
-                        ForEach(viewModel.assertionLogs) { log in
-                            HStack(alignment: .center, spacing: 10) {
+                        Divider()
+                        
+                        ForEach(Array(viewModel.assertionLogs.enumerated()), id: \.offset) { _, log in
+                            HStack(alignment: .top, spacing: 8) {
                                 Image(systemName: log.isPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .font(.system(size: 16, weight: .bold))
                                     .foregroundStyle(log.isPassed ? .green : .red)
+                                    .font(.caption.bold())
+                                    .padding(.top, 2)
                                 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(log.description)
-                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .font(.caption.bold())
                                         .foregroundStyle(.primary)
+                                    
                                     if let fail = log.failureReason {
                                         Text(fail)
-                                            .font(.system(size: 11, design: .monospaced))
+                                            .font(.caption2)
                                             .foregroundStyle(.red)
                                     }
                                 }
-                                
-                                Spacer()
-                                
-                                Text(log.isPassed ? "PASS" : "FAIL")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(log.isPassed ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-                                    .foregroundStyle(log.isPassed ? Color.green : Color.red)
-                                    .clipShape(Capsule())
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
-                            .background(Color(.tertiarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .padding(.vertical, 2)
                         }
                     }
                     .padding(12)
-                    .background(Color(.secondarySystemBackground).opacity(0.5))
+                    .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                // Response Body Viewer (Clean with single Copy button inside card)
-                VStack(alignment: .leading, spacing: 8) {
+                if let body = resp.body, !body.isEmpty {
                     Text("Response Body")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
@@ -1400,7 +1708,6 @@ public struct RequestBuilderView: View {
                     JSONSyntaxView(rawJSON: resp.body ?? "")
                 }
                 
-                // Response Headers (collapsible)
                 if !resp.headers.isEmpty {
                     DisclosureGroup("Response Headers (\(resp.headers.count))") {
                         VStack(alignment: .leading, spacing: 6) {
@@ -1451,6 +1758,9 @@ public struct RequestBuilderView: View {
                 Section("Request Title") {
                     TextField("Title", text: $requestSaveTitle)
                         .focused($isInputFocused)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
                 }
                 
                 Section("Collection") {
@@ -1475,6 +1785,8 @@ public struct RequestBuilderView: View {
             }
             .navigationTitle("Save Request")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -1483,20 +1795,48 @@ public struct RequestBuilderView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if let col = selectedCollectionForSave {
+                        let targetCol = selectedCollectionForSave ?? collections.first
+                        if let col = targetCol {
                             viewModel.saveToCollection(collection: col, customTitle: requestSaveTitle, context: modelContext)
+                            savedTargetName = col.name
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            withAnimation(.spring) {
+                                showSavedToast = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                withAnimation {
+                                    showSavedToast = false
+                                }
+                            }
                         }
                         showingSaveSheet = false
                     }
-                    .disabled(requestSaveTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedCollectionForSave == nil)
+                    .disabled(requestSaveTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (selectedCollectionForSave == nil && collections.isEmpty))
+                }
+            }
+            .onAppear {
+                if selectedCollectionForSave == nil {
+                    selectedCollectionForSave = collections.first
+                }
+                if requestSaveTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    requestSaveTitle = viewModel.title.isEmpty ? viewModel.resolveTitle() : viewModel.title
                 }
             }
             .alert("New Collection", isPresented: $showingNewColAlert) {
                 TextField("Collection Name", text: $newColName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
                 Button("Create") {
-                    let col = SDCollection(name: newColName)
+                    let trimmed = newColName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    let col = SDCollection(name: trimmed)
                     modelContext.insert(col)
-                    try? modelContext.save()
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        print("❌ Failed to create collection: \(error)")
+                    }
                     selectedCollectionForSave = col
                     newColName = ""
                 }
@@ -1519,6 +1859,9 @@ public struct RequestBuilderView: View {
                 
                 TextEditor(text: $curlImportText)
                     .font(.system(size: 12, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
                     .padding(8)
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -1532,22 +1875,22 @@ public struct RequestBuilderView: View {
                         .padding(.horizontal)
                 }
                 
-                Button {
-                    if let paste = UIPasteboard.general.string {
+                PasteButton(payloadType: String.self) { strings in
+                    if let paste = strings.first {
                         curlImportText = paste
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-                } label: {
-                    Label("Paste from Clipboard", systemImage: "doc.on.clipboard")
-                        .font(.caption.bold())
                 }
-                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .controlSize(.regular)
                 
                 Spacer()
             }
             .padding(.top)
             .navigationTitle("Import cURL")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

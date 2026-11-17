@@ -8,6 +8,7 @@ final class SDRequestParameter {
     var value: String
     var isEnabled: Bool
     var location: ParameterLocation
+    var request: SDRequest?
     
     init(key: String, value: String, isEnabled: Bool = true, location: ParameterLocation) {
         self.id = UUID()

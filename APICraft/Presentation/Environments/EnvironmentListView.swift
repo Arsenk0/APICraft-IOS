@@ -7,6 +7,7 @@ public struct EnvironmentListView: View {
     
     @State private var showingAddAlert = false
     @State private var newEnvName = ""
+    @State private var environmentToEdit: SDEnvironment?
     
     public init() {}
     
@@ -26,10 +27,7 @@ public struct EnvironmentListView: View {
                                 HStack(spacing: 12) {
                                     // Radio button for activating environment
                                     Button {
-                                        for e in environments { e.isSelected = false }
-                                        env.isSelected = true
-                                        try? modelContext.save()
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        activateEnvironment(env)
                                     } label: {
                                         Image(systemName: env.isSelected ? "checkmark.circle.fill" : "circle")
                                             .font(.title3)
@@ -66,16 +64,63 @@ public struct EnvironmentListView: View {
                                         .padding(.vertical, 2)
                                     }
                                 }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        deleteSingleEnv(env)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    
+                                    Button {
+                                        environmentToEdit = env
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                    }
+                                    .tint(.blue)
+                                }
+                                .swipeActions(edge: .leading) {
+                                    Button {
+                                        activateEnvironment(env)
+                                    } label: {
+                                        Label(env.isSelected ? "Active" : "Activate", systemImage: "checkmark.circle")
+                                    }
+                                    .tint(.green)
+                                }
+                                .contextMenu {
+                                    Button {
+                                        environmentToEdit = env
+                                    } label: {
+                                        Label("Edit Environment", systemImage: "pencil")
+                                    }
+                                    
+                                    Button {
+                                        activateEnvironment(env)
+                                    } label: {
+                                        Label(env.isSelected ? "Deactivate" : "Set as Active", systemImage: env.isSelected ? "checkmark.circle.fill" : "checkmark.circle")
+                                    }
+                                    
+                                    Divider()
+                                    
+                                    Button(role: .destructive) {
+                                        deleteSingleEnv(env)
+                                    } label: {
+                                        Label("Delete Environment", systemImage: "trash")
+                                    }
+                                }
                             }
                             .onDelete(perform: deleteEnv)
                         } footer: {
-                            Text("Tap the circle to activate an environment, or tap the row to view and edit its variables.")
+                            Text("Tap the circle or swipe right to activate. Swipe left to edit or delete.")
                                 .font(.caption2)
                         }
                     }
+                    .scrollDismissesKeyboard(.interactively)
                 }
             }
             .navigationTitle("Environments")
+            .sheet(item: $environmentToEdit) { env in
+                EditEnvironmentSheet(environment: env)
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -89,6 +134,7 @@ public struct EnvironmentListView: View {
             .alert("New Environment", isPresented: $showingAddAlert) {
                 TextField("Name (e.g. Development, Production)", text: $newEnvName)
                     .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                     .keyboardType(.asciiCapable)
                 
                 Button("Create") {
@@ -102,6 +148,17 @@ public struct EnvironmentListView: View {
                 Text("Enter a name for the new environment.")
             }
         }
+    }
+    
+    private func activateEnvironment(_ env: SDEnvironment) {
+        if env.isSelected {
+            env.isSelected = false
+        } else {
+            for e in environments { e.isSelected = false }
+            env.isSelected = true
+        }
+        try? modelContext.save()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func createEnvironment() {
@@ -121,17 +178,89 @@ public struct EnvironmentListView: View {
         modelContext.insert(env)
         do {
             try modelContext.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         } catch {
             print("Failed to save new environment: \(error)")
         }
         newEnvName = ""
     }
     
+    private func deleteSingleEnv(_ env: SDEnvironment) {
+        modelContext.delete(env)
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    
     private func deleteEnv(offsets: IndexSet) {
         for index in offsets {
-            modelContext.delete(environments[index])
+            if environments.indices.contains(index) {
+                modelContext.delete(environments[index])
+            }
         }
         try? modelContext.save()
+    }
+}
+
+// MARK: - Edit Environment Sheet
+struct EditEnvironmentSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allEnvironments: [SDEnvironment]
+    let environment: SDEnvironment
+    
+    @State private var name: String
+    @State private var isActive: Bool
+    
+    init(environment: SDEnvironment) {
+        self.environment = environment
+        _name = State(initialValue: environment.name)
+        _isActive = State(initialValue: environment.isSelected)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Environment Details") {
+                    TextField("Environment Name", text: $name)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
+                    
+                    Toggle("Active Environment", isOn: $isActive)
+                        .tint(.green)
+                }
+            }
+            .navigationTitle("Edit Environment")
+            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            environment.name = trimmed
+                        }
+                        if isActive {
+                            for e in allEnvironments { e.isSelected = false }
+                            environment.isSelected = true
+                        } else if environment.isSelected && !isActive {
+                            environment.isSelected = false
+                        }
+                        try? modelContext.save()
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .font(.headline)
+                }
+            }
+        }
     }
 }
 
@@ -140,6 +269,7 @@ struct EnvironmentDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allEnvironments: [SDEnvironment]
     @Bindable var environment: SDEnvironment
+    @State private var showingEditSheet = false
     
     init(environment: SDEnvironment) {
         self.environment = environment
@@ -147,14 +277,28 @@ struct EnvironmentDetailView: View {
     
     var body: some View {
         Form {
-            Section("Environment Info") {
-                TextField("Environment Name", text: $environment.name)
-                    .font(.body.bold())
-                    .autocorrectionDisabled()
-                    .keyboardType(.asciiCapable)
-                    .onChange(of: environment.name) {
-                        try? modelContext.save()
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(environment.name)
+                            .font(.title3.bold())
+                            .lineLimit(2)
+                        Spacer()
+                        if environment.isSelected {
+                            Text("Active")
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.green.opacity(0.15))
+                                .foregroundStyle(.green)
+                                .clipShape(Capsule())
+                        }
                     }
+                    Text("\(environment.variables.count) \(environment.variables.count == 1 ? "variable" : "variables") defined")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
                 
                 Toggle("Active Environment", isOn: Binding(
                     get: { environment.isSelected },
@@ -261,12 +405,27 @@ struct EnvironmentDetailView: View {
         }
         .navigationTitle(environment.name)
         .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingEditSheet = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+            }
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            EditEnvironmentSheet(environment: environment)
+        }
     }
     
     private func deleteVariables(offsets: IndexSet) {
         for index in offsets {
-            let v = environment.variables[index]
-            modelContext.delete(v)
+            if environment.variables.indices.contains(index) {
+                let v = environment.variables[index]
+                modelContext.delete(v)
+            }
         }
         environment.variables.remove(atOffsets: offsets)
         try? modelContext.save()

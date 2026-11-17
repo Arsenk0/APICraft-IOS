@@ -44,5 +44,6 @@ public struct MainTabView: View {
                 }
                 .tag(3)
         }
+        .dismissKeyboardOnTap()
     }
 }

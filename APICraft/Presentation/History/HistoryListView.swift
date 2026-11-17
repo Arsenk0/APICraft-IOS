@@ -69,9 +69,37 @@ public struct HistoryListView: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Filter Bar
+                // Filter & Search Bar
                 if !historyRequests.isEmpty {
                     VStack(spacing: 10) {
+                        // ASCII-Enforced Search Field
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            
+                            TextField("Search by title or URL...", text: $searchText)
+                                .font(.system(size: 13))
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .keyboardType(.asciiCapable)
+                            
+                            if !searchText.isEmpty {
+                                Button {
+                                    searchText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        
                         // Full-width status filter segment
                         Picker("Status Filter", selection: $statusFilter) {
                             ForEach(HistoryStatusFilter.allCases) { f in
@@ -120,6 +148,7 @@ public struct HistoryListView: View {
                                         statusFilter = .all
                                         selectedMethod = nil
                                         searchText = ""
+                                        hideKeyboard()
                                     }
                                 } label: {
                                     Text("Reset")
@@ -138,27 +167,51 @@ public struct HistoryListView: View {
                 List {
                     if historyRequests.isEmpty {
                         ContentUnavailableView(
-                            "History is Empty",
+                            "No History",
                             systemImage: "clock.arrow.circlepath",
-                            description: Text("Every executed request will automatically be saved here with execution details and status.")
+                            description: Text("Executed requests will automatically appear here with their duration, status code, and tests.")
                         )
                     } else if filteredRequests.isEmpty {
-                        ContentUnavailableView.search(text: searchText)
+                        ContentUnavailableView(
+                            "No Results",
+                            systemImage: "magnifyingglass",
+                            description: Text("No requests match the current filters.")
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            hideKeyboard()
+                        }
                     } else {
                         ForEach(filteredRequests) { req in
-                            let lastResult = req.executionHistory.last
+                            let lastResult = req.executionHistory.sorted(by: { $0.executedAt > $1.executedAt }).first
+                            let isAutotest = req.title.hasPrefix("[Test]")
+                            
                             NavigationLink {
                                 RequestDetailExecutionView(request: req)
                             } label: {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    // Header: Method + Title + Status
+                                    // Header: Method + Title + Badges + Status
                                     HStack(alignment: .center, spacing: 8) {
                                         MethodBadgeView(method: req.method)
                                         
-                                        Text(req.title)
+                                        Text(req.title.replacingOccurrences(of: "[Test] ", with: ""))
                                             .font(.subheadline.weight(.semibold))
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
+                                        
+                                        if isAutotest {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "play.badge.checkmark")
+                                                    .font(.system(size: 8, weight: .bold))
+                                                Text("TEST")
+                                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                            }
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 2)
+                                            .background(Color.purple.opacity(0.12))
+                                            .foregroundStyle(.purple)
+                                            .clipShape(Capsule())
+                                        }
                                         
                                         Spacer(minLength: 4)
                                         
@@ -185,11 +238,11 @@ public struct HistoryListView: View {
                                         .foregroundStyle(.secondary)
                                         
                                         if let lastResult {
-                                            // Latency Pill
+                                            // Latency Pill (clean integer ms)
                                             HStack(spacing: 2) {
                                                 Image(systemName: "bolt.fill")
                                                     .font(.system(size: 8))
-                                                Text(String(format: "%.0f ms", lastResult.responseDurationMs))
+                                                Text("\(Int(lastResult.responseDurationMs.rounded())) ms")
                                                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                             }
                                             .padding(.horizontal, 5)
@@ -230,6 +283,18 @@ public struct HistoryListView: View {
                                                 .background(lastResult.isAllAssertionsPassed ? Color.green.opacity(0.12) : Color.red.opacity(0.12))
                                                 .foregroundStyle(lastResult.isAllAssertionsPassed ? Color.green : Color.red)
                                                 .clipShape(Capsule())
+                                            } else if !req.assertions.isEmpty {
+                                                HStack(spacing: 2) {
+                                                    Image(systemName: "checkmark.shield")
+                                                        .font(.system(size: 8))
+                                                    Text("\(req.assertions.count) tests")
+                                                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                                }
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 2)
+                                                .background(Color.blue.opacity(0.12))
+                                                .foregroundStyle(.blue)
+                                                .clipShape(Capsule())
                                             }
                                         }
                                     }
@@ -253,7 +318,7 @@ public struct HistoryListView: View {
                                 
                                 Button {
                                     requestToSave = req
-                                    saveTitle = req.title
+                                    saveTitle = req.title.replacingOccurrences(of: "[Test] ", with: "")
                                     selectedCollectionForSave = collections.first
                                     showingSaveSheet = true
                                 } label: {
@@ -270,7 +335,7 @@ public struct HistoryListView: View {
                                 
                                 Button {
                                     requestToSave = req
-                                    saveTitle = req.title
+                                    saveTitle = req.title.replacingOccurrences(of: "[Test] ", with: "")
                                     selectedCollectionForSave = collections.first
                                     showingSaveSheet = true
                                 } label: {
@@ -296,8 +361,8 @@ public struct HistoryListView: View {
                         .onDelete(perform: deleteHistory)
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
-            .searchable(text: $searchText, prompt: "Search by title or URL...")
             .navigationTitle("History")
             .toolbar {
                 if !historyRequests.isEmpty {
@@ -329,6 +394,9 @@ public struct HistoryListView: View {
             Form {
                 Section("Request Title") {
                     TextField("Title", text: $saveTitle)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
                 }
                 
                 Section("Target Collection") {
@@ -353,6 +421,8 @@ public struct HistoryListView: View {
             }
             .navigationTitle("Save to Collection")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -361,9 +431,8 @@ public struct HistoryListView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        let targetCol = selectedCollectionForSave ?? collections.first
-                        if let req = requestToSave, let col = targetCol {
-                            saveToCollection(req: req, col: col, title: saveTitle)
+                        if let req = requestToSave, let col = selectedCollectionForSave ?? collections.first {
+                            saveHistoryItemToCollection(req: req, col: col, title: saveTitle)
                         }
                         showingSaveSheet = false
                     }
@@ -372,6 +441,9 @@ public struct HistoryListView: View {
             }
             .alert("New Collection", isPresented: $showingNewColAlert) {
                 TextField("Collection Name", text: $newColName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
                 Button("Create") {
                     let col = SDCollection(name: newColName)
                     modelContext.insert(col)
@@ -386,7 +458,31 @@ public struct HistoryListView: View {
         }
     }
     
-    private func saveToCollection(req: SDRequest, col: SDCollection, title: String) {
+    private func deleteRequest(_ req: SDRequest) {
+        modelContext.delete(req)
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    
+    private func deleteHistory(at offsets: IndexSet) {
+        for index in offsets {
+            if filteredRequests.indices.contains(index) {
+                let req = filteredRequests[index]
+                modelContext.delete(req)
+            }
+        }
+        try? modelContext.save()
+    }
+    
+    private func clearAllHistory() {
+        for req in historyRequests {
+            modelContext.delete(req)
+        }
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    
+    private func saveHistoryItemToCollection(req: SDRequest, col: SDCollection, title: String) {
         let newReq = SDRequest(
             title: title.isEmpty ? req.title : title,
             urlTemplate: req.urlTemplate,
@@ -405,29 +501,15 @@ public struct HistoryListView: View {
             newReq.assertions.append(p)
         }
         modelContext.insert(newReq)
-        col.requests.append(newReq)
+        if !col.requests.contains(where: { $0.id == newReq.id }) {
+            col.requests.append(newReq)
+        }
+        col.updatedAt = Date()
         try? modelContext.save()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
     
-    private func deleteRequest(_ request: SDRequest) {
-        modelContext.delete(request)
-        try? modelContext.save()
-    }
-    
-    private func deleteHistory(offsets: IndexSet) {
-        for index in offsets {
-            if filteredRequests.indices.contains(index) {
-                modelContext.delete(filteredRequests[index])
-            }
-        }
-        try? modelContext.save()
-    }
-    
-    private func clearAllHistory() {
-        for item in historyRequests {
-            modelContext.delete(item)
-        }
-        try? modelContext.save()
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

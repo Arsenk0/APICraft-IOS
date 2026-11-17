@@ -6,7 +6,11 @@ public struct VariableResolver {
         var result = text
         for (key, val) in variables {
             let placeholder = "{{" + key + "}}"
+            let encUpper = "%7B%7B" + key + "%7D%7D"
+            let encLower = "%7b%7b" + key + "%7d%7d"
             result = result.replacingOccurrences(of: placeholder, with: val)
+            result = result.replacingOccurrences(of: encUpper, with: val)
+            result = result.replacingOccurrences(of: encLower, with: val)
         }
         return result
     }

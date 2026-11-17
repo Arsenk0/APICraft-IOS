@@ -60,7 +60,8 @@ public struct CollectionsListView: View {
                     )
                 } else {
                     List {
-                        ForEach(collections) { collection in
+                        Section {
+                            ForEach(collections) { collection in
                             NavigationLink {
                                 CollectionDetailView(collection: collection)
                             } label: {
@@ -150,7 +151,12 @@ public struct CollectionsListView: View {
                             }
                         }
                         .onDelete(perform: deleteCollections)
+                        } footer: {
+                            Text("Tap a collection to view requests and run tests. Swipe left to edit or delete.")
+                                .font(.caption2)
+                        }
                     }
+                    .scrollDismissesKeyboard(.interactively)
                 }
             }
             .navigationTitle("Collections")
@@ -198,6 +204,7 @@ public struct CollectionsListView: View {
             .alert("New Collection", isPresented: $showingCreateAlert) {
                 TextField("Collection Name (e.g. Auth API)", text: $newCollectionName)
                     .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                     .keyboardType(.asciiCapable)
                 
                 Button("Create") {
@@ -230,6 +237,9 @@ public struct CollectionsListView: View {
                 
                 TextEditor(text: $importJSONText)
                     .font(.system(size: 12, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
                     .padding(8)
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -244,23 +254,37 @@ public struct CollectionsListView: View {
                 }
                 
                 HStack(spacing: 12) {
-                    Button {
-                        if let clip = UIPasteboard.general.string {
-                            importJSONText = clip
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    PasteButton(payloadType: String.self) { strings in
+                        if let str = strings.first {
+                            importJSONText = str
                         }
-                    } label: {
-                        Label("Paste Clipboard", systemImage: "doc.on.clipboard")
-                            .font(.caption.bold())
                     }
-                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.regular)
                     
-                    Button(role: .destructive) {
-                        importJSONText = ""
-                        importErrorMessage = nil
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    Button {
+                        // Load a quick demo JSON template
+                        importJSONText = """
+                        {
+                          "name": "Sample JSONPlaceholder API",
+                          "details": "Demo collection imported into APICraft",
+                          "requests": [
+                            {
+                              "title": "Get Posts",
+                              "url": "https://jsonplaceholder.typicode.com/posts",
+                              "method": "GET",
+                              "bodyType": "none",
+                              "headers": [],
+                              "queryParams": [],
+                              "assertions": [
+                                { "target": "statusCode", "comparison": "equals", "expectedValue": "200", "isEnabled": true }
+                              ]
+                            }
+                          ]
+                        }
+                        """
                     } label: {
-                        Label("Clear", systemImage: "xmark.circle")
+                        Label("Load Sample", systemImage: "sparkles")
                             .font(.caption.bold())
                     }
                     .buttonStyle(.bordered)
@@ -272,6 +296,8 @@ public struct CollectionsListView: View {
             .padding(.top)
             .navigationTitle("Import Collection")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -438,13 +464,20 @@ struct EditCollectionSheet: View {
                 Section("Collection Details") {
                     TextField("Collection Name", text: $name)
                         .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
                     
                     TextField("Description (optional)", text: $details, axis: .vertical)
                         .lineLimit(2...4)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
                 }
             }
             .navigationTitle("Edit Collection")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {

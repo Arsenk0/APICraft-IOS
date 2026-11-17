@@ -93,6 +93,7 @@ struct CollectionDetailView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
+                                    
                                 }
                                 
                                 Spacer(minLength: 4)
@@ -137,6 +138,7 @@ struct CollectionDetailView: View {
                 }
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(collection.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -195,6 +197,7 @@ struct CollectionDetailView: View {
                 Section("Request Details") {
                     TextField("Title (e.g. Get User)", text: $newRequestTitle)
                         .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                         .keyboardType(.asciiCapable)
                     
                     Picker("Method", selection: $newRequestMethod) {
@@ -205,11 +208,14 @@ struct CollectionDetailView: View {
                     
                     TextField("URL", text: $newRequestURL, axis: .vertical)
                         .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                         .keyboardType(.asciiCapable)
                 }
             }
             .navigationTitle("New Request")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -300,43 +306,53 @@ struct CollectionRunnerView: View {
                     }
                     
                     if isRunning {
-                        ProgressView(value: Double(currentIndex), total: Double(collection.requests.count))
-                            .progressViewStyle(.linear)
+                        ProgressView(value: Double(currentIndex), total: Double(max(1, collection.requests.count)))
+                            .tint(.blue)
                     }
                 }
                 .padding()
                 .background(Color(.secondarySystemBackground))
                 
-                // Result List
+                // Results List
                 List {
-                    ForEach(results) { res in
-                        Section {
+                    if results.isEmpty && !isRunning {
+                        ContentUnavailableView(
+                            "Ready to Test",
+                            systemImage: "play.circle",
+                            description: Text("Tap 'Start Run' to execute all requests sequentially and evaluate their assertions.")
+                        )
+                    } else {
+                        ForEach(results) { res in
                             VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 8) {
+                                HStack {
                                     MethodBadgeView(method: res.request.method)
                                     Text(res.request.title)
                                         .font(.subheadline.bold())
+                                        .lineLimit(1)
                                     Spacer()
-                                    StatusBadgeView(statusCode: res.statusCode)
+                                    if res.statusCode > 0 {
+                                        StatusBadgeView(statusCode: res.statusCode)
+                                    } else {
+                                        Text("ERR")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.red.opacity(0.15))
+                                            .foregroundStyle(.red)
+                                            .clipShape(Capsule())
+                                    }
                                 }
                                 
                                 HStack(spacing: 12) {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "clock")
-                                        Text("\(String(format: "%.0f", res.durationMs)) ms")
-                                    }
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "arrow.down.circle")
-                                        Text(ByteCountFormatter.string(fromByteCount: Int64(res.sizeBytes), countStyle: .file))
-                                    }
-                                    HStack(spacing: 3) {
-                                        Image(systemName: res.isAllPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                            .foregroundStyle(res.isAllPassed ? .green : .red)
-                                        Text(res.isAllPassed ? "Assertions passed" : "Assertions failed")
-                                            .foregroundStyle(res.isAllPassed ? .green : .red)
-                                    }
+                                    Text(res.request.urlTemplate)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text("\(String(format: "%.0f", res.durationMs)) ms")
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
                                 }
-                                .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 
                                 if let err = res.error {
@@ -366,6 +382,7 @@ struct CollectionRunnerView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.interactively)
                 
                 // Bottom Button
                 VStack {
@@ -409,76 +426,25 @@ struct CollectionRunnerView: View {
         results = []
         currentIndex = 0
         
-        var envMap: [String: String] = [:]
-        if let env = activeEnvironments.first {
-            for v in env.variables {
-                envMap[v.key] = v.value
-            }
-        }
-        
         for req in collection.requests {
             currentIndex += 1
-            let resolvedURL = VariableResolver.resolve(text: req.urlTemplate, using: envMap)
-            var headers: [String: String] = [:]
-            var queryItems: [URLQueryItem] = []
-            
-            for kv in req.keyValues where kv.isEnabled && !kv.key.isEmpty {
-                let resolved = VariableResolver.resolve(text: kv.value, using: envMap)
-                if kv.location == .header {
-                    headers[kv.key] = resolved
-                } else if kv.location == .query {
-                    queryItems.append(URLQueryItem(name: kv.key, value: resolved))
-                }
-            }
-            
-            let body = req.rawBodyContent.map { VariableResolver.resolve(text: $0, using: envMap) }
-            
-            let resp = await NativeNetworkClient.shared.execute(
-                urlString: resolvedURL,
-                method: req.method,
-                headers: headers,
-                queryItems: queryItems,
-                body: body,
-                bodyType: req.bodyType
-            )
-            
-            // Assertions
-            var logs: [AssertionEvaluationResult] = []
-            for a in req.assertions where a.isEnabled {
-                let r = AssertionEngine.evaluate(assertion: a, response: resp)
-                logs.append(r)
-            }
-            
-            let allPassed = logs.isEmpty ? (resp.statusCode >= 200 && resp.statusCode < 400) : logs.allSatisfy { $0.isPassed }
-            let item = RunnerItemResult(
+            let result = await RequestExecutionService.execute(
                 request: req,
-                statusCode: resp.statusCode,
-                durationMs: resp.durationMs,
-                sizeBytes: resp.sizeBytes,
-                assertionLogs: logs,
-                isAllPassed: allPassed,
-                error: resp.error
+                activeEnvironment: activeEnvironments.first,
+                context: modelContext,
+                recordHistoryCopy: true
             )
-            results.append(item)
             
-            // Save execution history
-            let exec = SDExecutionResult(
-                statusCode: resp.statusCode,
-                responseDurationMs: resp.durationMs,
-                responseBodySize: resp.sizeBytes,
-                responseBody: resp.body,
-                isAllAssertionsPassed: allPassed
+            let itemResult = RunnerItemResult(
+                request: req,
+                statusCode: result.response.statusCode,
+                durationMs: result.response.durationMs,
+                sizeBytes: result.response.sizeBytes,
+                assertionLogs: result.logs,
+                isAllPassed: result.allPassed,
+                error: result.response.error
             )
-            exec.request = req
-            modelContext.insert(exec)
-            for l in logs {
-                let sLog = SDAssertionLog(
-                    assertionDescription: l.description,
-                    isPassed: l.isPassed,
-                    failureReason: l.failureReason
-                )
-                exec.assertionLogs.append(sLog)
-            }
+            results.append(itemResult)
         }
         
         try? modelContext.save()

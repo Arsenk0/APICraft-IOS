@@ -24,3 +24,6 @@ xcuserdata/
 .build/
 .swiftpm/
 
+# IDE
+.vscode/
+

@@ -13,6 +13,13 @@ struct RequestDetailExecutionView: View {
     @FocusState private var isFocused: Bool
     
     @State private var showingDeleteAlert = false
+    @State private var latestAssertionLogs: [AssertionEvaluationResult] = []
+    
+    // Unsaved Changes Tracking
+    @State private var initialTitle: String = ""
+    @State private var initialURL: String = ""
+    @State private var initialMethod: HTTPMethodType = .get
+    @State private var showingUnsavedAlert = false
     
     // Save from history to collection state
     @State private var showingSaveSheet = false
@@ -23,6 +30,13 @@ struct RequestDetailExecutionView: View {
     
     init(request: SDRequest) {
         self.request = request
+    }
+    
+    private var hasUnsavedChanges: Bool {
+        guard !request.isHistoryItem else { return false }
+        return request.title != initialTitle ||
+               request.urlTemplate != initialURL ||
+               request.method != initialMethod
     }
     
     private var headers: [SDRequestParameter] {
@@ -36,12 +50,33 @@ struct RequestDetailExecutionView: View {
     public var body: some View {
         Form {
             Section("Request") {
-                HStack(alignment: .top, spacing: 10) {
-                    if request.isHistoryItem {
-                        // Fixed method badge for history items (cannot be edited)
-                        MethodBadgeView(method: request.method)
-                            .padding(.top, 4)
-                    } else {
+                if request.isHistoryItem {
+                    // History items are strictly read-only
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            MethodBadgeView(method: request.method)
+                            Text(request.title)
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text("Read-Only Log")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.15))
+                                .foregroundStyle(.secondary)
+                                .clipShape(Capsule())
+                        }
+                        
+                        Text(request.urlTemplate)
+                            .font(.system(size: 13.5, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .padding(.vertical, 2)
+                    }
+                } else {
+                    // Editable Request from Collection
+                    HStack(alignment: .top, spacing: 10) {
                         Picker("Method", selection: $request.method) {
                             ForEach(HTTPMethodType.allCases) { m in
                                 Text(m.rawValue).tag(m)
@@ -50,15 +85,10 @@ struct RequestDetailExecutionView: View {
                         .labelsHidden()
                         .pickerStyle(.menu)
                         .padding(.top, 2)
+                        
+                        DeselectableURLField(text: $request.urlTemplate, placeholder: "https://api.example.com")
+                            .frame(minHeight: 34)
                     }
-                    
-                    TextField("https://api.example.com", text: $request.urlTemplate, axis: .vertical)
-                        .font(.system(size: 14, design: .monospaced))
-                        .focused($isFocused)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.asciiCapable)
-                        .lineLimit(1...3)
                 }
                 
                 VStack(spacing: 8) {
@@ -73,217 +103,238 @@ struct RequestDetailExecutionView: View {
                                 ProgressView()
                                     .tint(.white)
                             } else if request.executionHistory.isEmpty && lastResponse == nil {
-                                Image(systemName: "paperplane.fill")
-                                Text("Send Request")
+                                Image(systemName: "play.fill")
+                                Text("Execute Request")
                             } else {
                                 Image(systemName: "arrow.clockwise")
-                                Text("Send Again")
+                                Text("Re-execute")
                             }
                         }
-                        .font(.subheadline.bold())
+                        .font(.headline)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.blue, Color.cyan.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .shadow(color: Color.blue.opacity(0.2), radius: 3, y: 2)
+                        .padding(.vertical, 8)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
                     .disabled(isExecuting || request.urlTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .buttonStyle(.plain)
                     
-                    HStack(spacing: 8) {
+                    // Show "Save to Collection" button when viewing a history execution
+                    if request.isHistoryItem {
                         Button {
-                            AppNavigationState.shared.openInBuilder(request: request)
+                            isFocused = false
+                            saveTitle = request.title.replacingOccurrences(of: "[Test] ", with: "")
+                            selectedCollectionForSave = collections.first
+                            showingSaveSheet = true
                         } label: {
                             HStack(spacing: 6) {
-                                Image(systemName: "arrow.up.right.square")
-                                Text("Builder")
+                                Image(systemName: "folder.badge.plus")
+                                Text("Save to Collection...")
                             }
-                            .font(.caption.bold())
+                            .font(.subheadline.bold())
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color.primary.opacity(0.06))
-                            .foregroundStyle(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(.vertical, 4)
                         }
-                        .buttonStyle(.plain)
-                        
-                        if request.isHistoryItem {
-                            Button {
-                                saveTitle = request.title
-                                selectedCollectionForSave = collections.first
-                                showingSaveSheet = true
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "folder.badge.plus")
-                                    Text("Save to Collection")
-                                }
-                                .font(.caption.bold())
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(Color.orange.opacity(0.12))
-                                .foregroundStyle(.orange)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        .buttonStyle(.bordered)
+                        .tint(.indigo)
                     }
                 }
-                .listRowSeparator(.hidden)
-                .padding(.vertical, 4)
             }
             
-            // Execution Result
-            if let resp = lastResponse {
-                Section("Latest Response") {
-                    HStack(spacing: 8) {
-                        StatusBadgeView(statusCode: resp.statusCode, showText: true)
-                        Spacer(minLength: 4)
-                        Label(String(format: "%.0f ms", resp.durationMs), systemImage: "timer")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Label("\(resp.sizeBytes) B", systemImage: "arrow.down.circle")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    
-                    if let err = resp.error {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                    
-                    JSONSyntaxView(rawJSON: resp.body ?? "")
-                        .padding(.top, 4)
-                    
-                    if !resp.cookies.isEmpty {
-                        DisclosureGroup("Cookies (\(resp.cookies.count))") {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(resp.cookies) { cookie in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        HStack {
-                                            Text(cookie.name)
-                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                                .foregroundStyle(.blue)
-                                            Spacer()
-                                            if cookie.isSecure {
-                                                Image(systemName: "lock.fill")
-                                                    .font(.system(size: 9))
-                                                    .foregroundStyle(.green)
-                                            }
-                                        }
-                                        Text(cookie.value)
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .lineLimit(2)
-                                    }
-                                    .padding(.vertical, 2)
-                                    Divider()
-                                }
-                            }
-                            .padding(.top, 4)
+            if !queryParams.isEmpty {
+                Section("Query Parameters (\(queryParams.count))") {
+                    ForEach(queryParams) { param in
+                        HStack {
+                            Text(param.key)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            Spacer()
+                            Text(param.value)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.caption.bold())
                     }
                 }
-            } else if let savedResult = request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt }).first {
-                Section("Saved Response") {
+            }
+            
+            if !headers.isEmpty {
+                Section("Headers (\(headers.count))") {
+                    ForEach(headers) { header in
+                        HStack {
+                            Text(header.key)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            Spacer()
+                            Text(header.value)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            if request.bodyType != .none, let body = request.rawBodyContent, !body.isEmpty {
+                Section("Body (\(request.bodyType.rawValue))") {
+                    Text(body)
+                        .font(.system(size: 13, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+            }
+            
+            // Latest Execution Response Section
+            if let resp = lastResponse {
+                Section("Response") {
                     HStack(spacing: 8) {
-                        StatusBadgeView(statusCode: savedResult.statusCode, showText: true)
-                        Spacer(minLength: 4)
-                        Label(String(format: "%.0f ms", savedResult.responseDurationMs), systemImage: "timer")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Label("\(savedResult.responseBodySize) B", systemImage: "arrow.down.circle")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        StatusBadgeView(statusCode: resp.statusCode)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                            Text("\(Int(resp.durationMs.rounded())) ms")
+                                .font(.caption.bold())
+                        }
+                        .foregroundStyle(.secondary)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.caption2)
+                            Text("\(resp.sizeBytes) B")
+                                .font(.caption.bold())
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                    
+                    if !latestAssertionLogs.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Assertions (\(latestAssertionLogs.filter { $0.isPassed }.count)/\(latestAssertionLogs.count) Passed)")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            
+                            ForEach(Array(latestAssertionLogs.enumerated()), id: \.offset) { _, log in
+                                HStack(spacing: 6) {
+                                    Image(systemName: log.isPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundStyle(log.isPassed ? .green : .red)
+                                        .font(.caption)
+                                    Text(log.description)
+                                        .font(.caption)
+                                    if let fail = log.failureReason {
+                                        Text("— \(fail)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
                     
-                    if let body = savedResult.responseBody, !body.isEmpty {
+                    if !resp.headers.isEmpty {
+                        DisclosureGroup("Response Headers (\(resp.headers.count))") {
+                            ForEach(Array(resp.headers.keys.sorted()), id: \.self) { key in
+                                HStack(alignment: .top) {
+                                    Text(key)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Text(resp.headers[key] ?? "")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.trailing)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    
+                    if let body = resp.body, !body.isEmpty {
+                        JSONSyntaxView(rawJSON: body)
+                            .padding(.top, 4)
+                    }
+                }
+            } else if let lastExec = request.executionHistory.last {
+                Section("Last Recorded Execution") {
+                    HStack(spacing: 8) {
+                        StatusBadgeView(statusCode: lastExec.statusCode)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                            Text("\(Int(lastExec.responseDurationMs.rounded())) ms")
+                                .font(.caption.bold())
+                        }
+                        .foregroundStyle(.secondary)
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.caption2)
+                            Text("\(lastExec.responseBodySize) B")
+                                .font(.caption.bold())
+                        }
+                        .foregroundStyle(.secondary)
+                        
+                        Spacer()
+                        
+                        Text(lastExec.executedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 2)
+                    
+                    if !lastExec.assertionLogs.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            let passedCount = lastExec.assertionLogs.filter { $0.isPassed }.count
+                            Text("Assertions (\(passedCount)/\(lastExec.assertionLogs.count) Passed)")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            
+                            ForEach(lastExec.assertionLogs) { log in
+                                HStack(spacing: 6) {
+                                    Image(systemName: log.isPassed ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundStyle(log.isPassed ? .green : .red)
+                                        .font(.caption)
+                                    Text(log.assertionDescription)
+                                        .font(.caption)
+                                    if let fail = log.failureReason {
+                                        Text("— \(fail)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
+                    if let headers = lastExec.responseHeaders, !headers.isEmpty {
+                        DisclosureGroup("Response Headers (\(headers.count))") {
+                            ForEach(Array(headers.keys.sorted()), id: \.self) { key in
+                                HStack(alignment: .top) {
+                                    Text(key)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Text(headers[key] ?? "")
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.trailing)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    
+                    if let body = lastExec.responseBody, !body.isEmpty {
                         JSONSyntaxView(rawJSON: body)
                             .padding(.top, 4)
                     }
                 }
             }
             
-            // Headers Section
-            Section("Headers (\(headers.count))") {
-                if headers.isEmpty {
-                    Text("No headers configured")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(headers) { h in
-                        HStack(spacing: 8) {
-                            Text(h.key)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(h.isEnabled ? .primary : .secondary)
-                                .lineLimit(1)
-                            
-                            Spacer(minLength: 4)
-                            
-                            Text(h.value)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-            }
-            
-            // Query Parameters Section
-            Section("Query Parameters (\(queryParams.count))") {
-                if queryParams.isEmpty {
-                    Text("No query parameters")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(queryParams) { q in
-                        HStack(spacing: 8) {
-                            Text(q.key)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(q.isEnabled ? .primary : .secondary)
-                                .lineLimit(1)
-                            
-                            Spacer(minLength: 4)
-                            
-                            Text(q.value)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-            }
-            
-            // Body Section (if present)
-            if let body = request.rawBodyContent, !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Section("Body (\(request.bodyType.rawValue))") {
-                    Text(body)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-            }
-            
             if !request.executionHistory.isEmpty {
                 Section("Execution History (\(request.executionHistory.count))") {
-                    ForEach(request.executionHistory.sorted(by: { $0.executedAt > $1.executedAt })) { hist in
+                    ForEach(request.executionHistory.reversed()) { hist in
                         HStack(spacing: 8) {
                             StatusBadgeView(statusCode: hist.statusCode)
-                            Text(String(format: "%.0f ms", hist.responseDurationMs))
-                                .font(.caption.monospacedDigit())
+                            Text("\(Int(hist.responseDurationMs.rounded())) ms")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 4)
                             Text(hist.executedAt.formatted(date: .omitted, time: .standard))
@@ -295,8 +346,27 @@ struct RequestDetailExecutionView: View {
             }
         }
         .navigationTitle(request.title)
+        .navigationBarBackButtonHidden(!request.isHistoryItem && hasUnsavedChanges)
         .scrollDismissesKeyboard(.interactively)
+        .onAppear {
+            initialTitle = request.title
+            initialURL = request.urlTemplate
+            initialMethod = request.method
+        }
         .toolbar {
+            if !request.isHistoryItem && hasUnsavedChanges {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingUnsavedAlert = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
+                    }
+                }
+            }
+            
             ToolbarItem(placement: .topBarTrailing) {
                 Button(role: .destructive) {
                     showingDeleteAlert = true
@@ -305,6 +375,21 @@ struct RequestDetailExecutionView: View {
                         .foregroundStyle(.red)
                 }
             }
+        }
+        .alert("Unsaved Changes", isPresented: $showingUnsavedAlert) {
+            Button("Save Changes") {
+                try? modelContext.save()
+                dismiss()
+            }
+            Button("Discard Changes", role: .destructive) {
+                request.title = initialTitle
+                request.urlTemplate = initialURL
+                request.method = initialMethod
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You have unsaved modifications to '\(request.title)'. Do you want to save them?")
         }
         .alert("Delete Request", isPresented: $showingDeleteAlert) {
             Button("Delete", role: .destructive) {
@@ -324,6 +409,9 @@ struct RequestDetailExecutionView: View {
             Form {
                 Section("Request Title") {
                     TextField("Title", text: $saveTitle)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.asciiCapable)
                 }
                 
                 Section("Target Collection") {
@@ -348,6 +436,8 @@ struct RequestDetailExecutionView: View {
             }
             .navigationTitle("Save to Collection")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnTap()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -367,6 +457,9 @@ struct RequestDetailExecutionView: View {
             }
             .alert("New Collection", isPresented: $showingNewColAlert) {
                 TextField("Collection Name", text: $newColName)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.asciiCapable)
                 Button("Create") {
                     let col = SDCollection(name: newColName)
                     modelContext.insert(col)
@@ -410,8 +503,16 @@ struct RequestDetailExecutionView: View {
             newReq.assertions.append(p)
         }
         modelContext.insert(newReq)
-        col.requests.append(newReq)
-        try? modelContext.save()
+        if !col.requests.contains(where: { $0.id == newReq.id }) {
+            col.requests.append(newReq)
+        }
+        col.updatedAt = Date()
+        do {
+            try modelContext.save()
+            print("✅ [APICraft] Saved copy to collection '\(col.name)'")
+        } catch {
+            print("❌ [APICraft] Failed to save copy to collection: \(error)")
+        }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
     
@@ -420,54 +521,15 @@ struct RequestDetailExecutionView: View {
         isExecuting = true
         defer { isExecuting = false }
         
-        var envMap: [String: String] = [:]
-        if let env = activeEnvironments.first {
-            for v in env.variables {
-                envMap[v.key] = v.value
-            }
-        }
-        
-        let resolvedURL = VariableResolver.resolve(text: request.urlTemplate, using: envMap)
-        var reqHeaders: [String: String] = [:]
-        var queryItems: [URLQueryItem] = []
-        
-        for kv in request.keyValues where kv.isEnabled && !kv.key.isEmpty {
-            let resVal = VariableResolver.resolve(text: kv.value, using: envMap)
-            if kv.location == .header {
-                reqHeaders[kv.key] = resVal
-            } else if kv.location == .query {
-                queryItems.append(URLQueryItem(name: kv.key, value: resVal))
-            }
-        }
-        
-        let body = request.rawBodyContent.map { VariableResolver.resolve(text: $0, using: envMap) }
-        
-        let resp = await NativeNetworkClient.shared.execute(
-            urlString: resolvedURL,
-            method: request.method,
-            headers: reqHeaders,
-            queryItems: queryItems,
-            body: body,
-            bodyType: request.bodyType
+        let result = await RequestExecutionService.execute(
+            request: request,
+            activeEnvironment: activeEnvironments.first,
+            context: modelContext,
+            recordHistoryCopy: true
         )
         
-        self.lastResponse = resp
-        
-        // Save execution to SwiftData
-        let exec = SDExecutionResult(
-            statusCode: resp.statusCode,
-            responseDurationMs: resp.durationMs,
-            responseBodySize: resp.sizeBytes,
-            responseBody: resp.body,
-            isAllAssertionsPassed: resp.statusCode >= 200 && resp.statusCode < 400
-        )
-        exec.request = request
-        request.executionHistory.append(exec)
-        modelContext.insert(exec)
-        do {
-            try modelContext.save()
-        } catch {
-            print("⚠️ SwiftData save error in collection detail: \(error)")
-        }
+        self.lastResponse = result.response
+        self.latestAssertionLogs = result.logs
+        UINotificationFeedbackGenerator().notificationOccurred(result.allPassed ? .success : .error)
     }
 }
