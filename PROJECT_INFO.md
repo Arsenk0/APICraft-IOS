@@ -115,31 +115,119 @@
 ### Етап 1: MVP для курсової роботи (Виконано 100%)
 *Ціль: Автономний, стабільний HTTP-клієнт з локальним збереженням, редактором запитів та базовою перевіркою відповідей.*
 
-* [x] **Request Builder:**
+* [x] **Request Builder (вкладка "Requests"):**
   * [x] Вибір методів: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS`.
-  * [x] Редагування URL, Query Parameters та Headers (key-value інтерфейс з перемикачами активності).
-  * [x] Редагування Body: `none`, `raw JSON`, `x-www-form-urlencoded`.
-  * [x] Генерація та парсинг cURL команд (CURLParser, CURLGenerator).
-* [x] **Response Inspector:**
-  * [x] Відображення HTTP-статусу, часу відгуку (ms) та розміру (bytes/KB).
-  * [x] Перегляд заголовків відповіді (Response Headers) та Cookies (з безпековими прапорцями Secure/HTTPOnly).
-  * [x] Форматування JSON (Prettify) та повноцінне кольорове синтаксичне підсвічування.
-* [x] **Локальне сховище (SwiftData):**
-  * [x] Історія останніх виконаних запитів із збереженням метрик і логів перевірок.
-  * [x] Створення та структурування колекцій/папок.
-  * [x] Збереження запитів з історії у вибрану або нову колекцію.
-* [x] **Змінні середовища (Environments):**
-  * [x] Створення та перемикання активного оточення (`Dev`, `Stage`, `Prod`).
-  * [x] Підстановка змінних виду `{{base_url}}` у URL, Headers, Body.
-* [x] **Assertion Engine:**
-  * [x] Валідація коду статусу (`Status == 200`).
+  * [x] Редагування URL з автоматичним визначенням протоколу (HTTPS/HTTP) та перемикачем схеми.
+  * [x] Розширюване URL-поле з підтримкою довгих URL (auto-expand, scroll, char counter).
+  * [x] Редагування Query Parameters (key-value інтерфейс з перемикачами активності, двостороння синхронізація URL ↔ Params).
+  * [x] Редагування Headers (key-value інтерфейс з перемикачами активності).
+  * [x] Редагування Body: `None`, `JSON`, `Form Data`, `x-www-form-urlencoded`.
+  * [x] JSON Beautify (prettify) та шаблон JSON-тіла.
+  * [x] Генерація та парсинг cURL команд (CURLParser, CURLGenerator) — імпорт/експорт через UI Sheet.
+  * [x] 7 вбудованих Quick API Presets (GET Todo, POST JSON, POST Form, PUT Replace, PATCH Update, DELETE Item, HEAD Headers) з готовими assertions.
+  * [x] Розпізнавання буферу обміну (Clipboard Preview) — URL, JSON, cURL.
+  * [x] Анімований Splash Screen з прогрес-баром та tap-to-dismiss.
+
+* [x] **Authorization Module (вкладка "Auth"):**
+  * [x] Підтримка 4 типів авторизації: None, Bearer Token, Basic Auth (Base64), API Key.
+  * [x] API Key — додавання до Header або Query Param з налаштуванням ключа та значення.
+  * [x] Інтерполяція змінних середовища (`{{token}}`) у токенах та ключах авторизації.
+  * [x] Автоматичне вираховування та додавання заголовка `Authorization` під час виконання запиту.
+  * [x] Розпізнавання Authorization з cURL-імпорту (Bearer / Basic parsing).
+
+* [x] **Response Inspector (вкладка "Response", з'являється після виконання):**
+  * [x] Відображення HTTP-статусу (числовий код + текстовий опис), часу відгуку (ms) та розміру (bytes).
+  * [x] Іконки та кольорові бейджі для кодів 2xx/3xx/4xx/5xx.
+  * [x] Перегляд заголовків відповіді (Response Headers) у розкривному блоці (`DisclosureGroup`).
+  * [x] Перегляд Cookies з атрибутами (Secure, HTTPOnly, Domain, Path, Expires).
+  * [x] Форматування JSON (Prettify) та виявлення формату тіла (JSON / XML / HTML / Raw).
+  * [x] In-body Search з підсвіткою знайдених фрагментів та лічильником matches.
+  * [x] Line Wrap toggle (Wrap: On / Off) для горизонтального скролу.
+  * [x] Collapse/Expand для великих відповідей (> 12 рядків або 350 символів) з градієнтним фейдом.
+  * [x] Copy Body кнопка з toast-підтвердженням.
+  * [x] Відображення помилок мережі (Network Error card) з описом.
+
+* [x] **Assertion Engine (вкладка "Tests"):**
+  * [x] Валідація коду статусу (`Status == 200`, `Status != 404`, `Status > 300`, `Status < 500`).
   * [x] Валідація часу виконання (`Latency < 500ms`).
-  * [x] Перевірка наявності та вмісту заголовків.
+  * [x] Перевірка наявності та вмісту заголовків (Header contains, equals, regex).
   * [x] Перевірка входження підрядка в тіло відповіді (`bodyContains`).
-  * [x] Валідація наявності кореневого та вкладеного ключа в JSON (`jsonKeyExists`).
-  * [x] Валідація конкретних значень у JSON за крапковим шляхом (`jsonValue`).
+  * [x] Валідація наявності кореневого та вкладеного ключа в JSON (`jsonKeyExists`, підтримка dot-notation та array index syntax).
+  * [x] Валідація конкретних значень у JSON за крапковим шляхом (`jsonValue`) — equals, notEquals, contains, greaterThan, lessThan, regexMatch.
+  * [x] 6 типів порівнянь (`==`, `!=`, `contains`, `>`, `<`, `matches regex`).
+  * [x] Quick-add кнопки для швидкого додавання assertions (Status 200, Key 'title', JSON 'id' == 1, Time < 1000ms, Body contains).
+  * [x] Автоматичне заповнення defaults при зміні assertion target.
+  * [x] Відображення результатів assertions з passed/failed статусом та failure reason.
+
+* [x] **Локальне сховище (SwiftData):**
+  * [x] 8 SwiftData entities: `SDCollection`, `SDRequest`, `SDRequestParameter`, `SDTestAssertion`, `SDExecutionResult`, `SDAssertionLog`, `SDEnvironment`, `SDEnvironmentVariable`.
+  * [x] Cascade delete правила для всіх зв'язків.
+  * [x] Автоматичний fallback: видалення corrupted SQLite store → retry → in-memory fallback.
+  * [x] Seed data при першому запуску: starter Environment + starter Collection з 2 запитами та assertions.
+
+* [x] **Колекції (вкладка "Collections"):**
+  * [x] Створення, редагування (назва, опис) та видалення колекцій.
+  * [x] Збереження запитів до колекції (з Request Builder, History, або RequestDetailView).
+  * [x] Список запитів у колекції з MethodBadge та StatusBadge останнього виконання.
+  * [x] Додавання нових запитів безпосередньо в колекцію (New Request sheet).
+  * [x] Swipe-to-delete, swipe-to-open-in-builder, context menu.
+  * [x] **Collection Runner** — послідовне виконання всіх запитів колекції з прогрес-баром та зведенням (Passed/Failed).
+  * [x] **Експорт колекцій** у JSON (копіювання в буфер обміну) з повними headers, params, assertions.
+  * [x] **Імпорт колекцій** з JSON (paste або Load Sample) з повною реконструкцією запитів.
+
+* [x] **Історія виконань (вкладка "History"):**
+  * [x] Автоматичне збереження кожного виконаного запиту як history item з усіма параметрами.
+  * [x] Пошук за назвою та URL.
+  * [x] Фільтрація за статусом (All / 2xx Success / Errors 4xx+5xx).
+  * [x] Фільтрація за HTTP-методом (All Methods / конкретний).
+  * [x] Відображення метрик: latency pill, size pill, test assertions indicator.
+  * [x] Open in Builder — завантаження запиту з історії у Request Builder.
+  * [x] Save to Collection — збереження запиту з історії у вибрану колекцію.
+  * [x] Clear All History з підтвердженням.
+
+* [x] **Змінні середовища (вкладка "Environments"):**
+  * [x] Створення та видалення оточень (Environment).
+  * [x] Редагування назви та статусу (активне/неактивне) через Edit Sheet.
+  * [x] Радіо-кнопка активації (тільки одне активне оточення).
+  * [x] Swipe-to-activate, swipe-to-edit, swipe-to-delete, context menu.
+  * [x] CRUD для змінних у оточенні (key-value editor, inline editing з auto-save).
+  * [x] Підстановка змінних виду `{{base_url}}` у URL, Headers, Body, Auth tokens.
+  * [x] Підтримка percent-encoded шаблонів (`%7B%7Bkey%7D%7D`).
+  * [x] Банер активного оточення у Request Builder.
+  * [x] Auto-seed при створенні — `base_url` зі значенням залежно від назви.
+
+* [x] **Request Execution Service (Centralized Use Case):**
+  * [x] Єдина точка виконання запитів для Builder, Collection Runner, RequestDetailView.
+  * [x] Резолвінг змінних → побудова URLRequest → виконання через `NativeNetworkClient.shared` (actor) → оцінка assertions → збереження `SDExecutionResult` + `SDAssertionLog` → опціональне створення history copy.
+
+* [x] **Навігація та UX:**
+  * [x] 4-tab TabView: Requests, Collections, History, Environments.
+  * [x] AppNavigationState (singleton `@Observable`) для cross-tab навігації (openInBuilder).
+  * [x] Unsaved changes alerts з опціями Save / Discard / Cancel.
+  * [x] Toast notifications для cURL copy, save to collection.
+  * [x] Haptic feedback (impact, notification) на ключових діях.
+  * [x] Keyboard dismissal: `.scrollDismissesKeyboard(.interactively)`.
+  * [x] Locale forced to `en_US` для консистентного форматування.
+
+* [x] **UI-компоненти (Presentation/Common):**
+  * [x] `MethodBadgeView` — кольоровий бейдж HTTP-методу (7 кольорів).
+  * [x] `StatusBadgeView` — іконка + код статусу + опціональний текстовий опис (17 конкретних кодів + fallback groups).
+  * [x] `JSONSyntaxView` — повнофункціональний JSON/XML/HTML viewer з header bar, search, wrap, expand/collapse, copy.
+  * [x] `DeselectableURLField` — UITextView-based кастомний URL field з авто-розміром, placeholder, scroll coordination.
+  * [x] `TelegramKeyboardPasteBarView` — Telegram-style paste accessory.
+  * [x] `ClipboardPreviewInfo` — розпізнавання вмісту буферу обміну (URL, JSON, cURL, plain text) з іконками та субтитрами.
+
+* [x] **Мережевий клієнт (`NativeNetworkClient`):**
+  * [x] Swift `actor` для thread safety.
+  * [x] Автоматичне додавання `https://` якщо протокол не вказано.
+  * [x] Обробка Query Items через `URLComponents`.
+  * [x] Auto Content-Type: `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data` (з автоматичним визначенням boundary).
+  * [x] Таймаути: request 30s, resource 60s.
+  * [x] Парсинг response headers, cookies, body → `NetworkResponse`.
+  * [x] Error handling з duration tracking навіть при помилці.
+
 * [x] **Модульне тестування (Swift Testing):**
-  * [x] Таргет `APICraftTests` з 14 автоматизованими юніт-тестами (100% успішне проходження).
+  * [x] Таргет `APICraftTests` з **28 автоматизованими юніт-тестами** у 11 test suites (100% успішне проходження).
 
 ---
 
@@ -167,7 +255,58 @@
 
 ---
 
-## 5. Схема бази даних (SwiftData Entities)
+## 5. Файлова структура проєкту
+
+```text
+APICraft/
+├── App/
+│   ├── APICraftApp.swift               — @main entry point, ModelContainer, SplashScreen
+│   └── MainTabView.swift               — 4-tab TabView, AppNavigationState, seed data
+├── Data/
+│   ├── Network/
+│   │   └── NativeNetworkClient.swift   — actor-based URLSession HTTP client
+│   └── Storage/
+│       └── Entities/
+│           ├── SDAssertionLog.swift     — @Model: assertion execution log
+│           ├── SDCollection.swift       — @Model: collection of requests
+│           ├── SDEnums.swift            — HTTPMethodType, BodyType, AssertionComparison, AssertionTarget, ParameterLocation
+│           ├── SDEnvironment.swift      — @Model: environment + SDEnvironmentVariable
+│           ├── SDExecutionResult.swift  — @Model: request execution result with metrics
+│           ├── SDRequest.swift          — @Model: HTTP request definition
+│           ├── SDRequestParameter.swift — @Model: key-value parameter (header/query/form)
+│           └── SDTestAssertion.swift    — @Model: test assertion definition
+├── Domain/
+│   ├── Engine/
+│   │   ├── AssertionEngine.swift        — assertion evaluation logic + RequestExecutionService
+│   │   └── VariableResolver.swift       — {{variable}} interpolation + CURLParser + CURLGenerator
+│   └── Models/
+│       └── NetworkResponse.swift        — NetworkResponse, ResponseCookie, ClipboardPreviewInfo
+├── Presentation/
+│   ├── Collections/
+│   │   ├── CollectionsListView.swift    — collections list, import/export, EditCollectionSheet
+│   │   ├── CollectionDetailView.swift   — collection detail, CollectionRunnerView
+│   │   └── RequestDetailExecutionView.swift — request detail with execution & save-to-collection
+│   ├── Common/
+│   │   ├── DeselectableURLField.swift   — UIViewRepresentable custom URL text view
+│   │   ├── JSONSyntaxView.swift         — JSON viewer + keyboard extensions + paste bar
+│   │   ├── MethodBadgeView.swift        — HTTP method color badge
+│   │   └── StatusBadgeView.swift        — HTTP status code badge with icons
+│   ├── Environments/
+│   │   └── EnvironmentListView.swift    — environments list, detail, variables editor
+│   ├── History/
+│   │   └── HistoryListView.swift        — history list with search, filters, save-to-collection
+│   └── RequestBuilder/
+│       ├── RequestBuilderView.swift     — main request builder (1917 lines, 7 presets, 6 tabs)
+│       └── RequestBuilderViewModel.swift — @Observable VM with auth, cURL, sync, send logic
+├── Resources/
+│   └── Assets.xcassets/                 — AppIcon, AppLogo, AccentColor
+└── APICraftTests/
+    └── APICraftTests.swift              — 21 unit tests in 7 @Suite groups
+```
+
+---
+
+## 6. Схема бази даних (SwiftData Entities)
 
 ```swift
 import Foundation
@@ -175,44 +314,106 @@ import SwiftData
 
 // MARK: - Enums
 
-public enum HTTPMethodType: String, Codable, CaseIterable {
+public enum HTTPMethodType: String, Codable, CaseIterable, Identifiable {
     case get = "GET"
     case post = "POST"
     case put = "PUT"
-    case delete = "DELETE"
     case patch = "PATCH"
+    case delete = "DELETE"
     case head = "HEAD"
     case options = "OPTIONS"
+    
+    public var id: String { rawValue }
 }
 
-public enum BodyType: String, Codable {
-    case none
-    case json
-    case formData
-    case urlEncoded
+public enum BodyType: String, Codable, CaseIterable, Identifiable {
+    case none = "None"
+    case json = "JSON"
+    case formData = "Form Data"
+    case urlEncoded = "x-www-form-urlencoded"
+    
+    public var id: String { rawValue }
 }
 
-public enum AssertionComparison: String, Codable {
-    case equals
-    case notEquals
-    case contains
-    case greaterThan
-    case lessThan
-    case regexMatch
+public enum AssertionComparison: String, Codable, CaseIterable, Identifiable {
+    case equals = "=="
+    case notEquals = "!="
+    case contains = "contains"
+    case greaterThan = ">"
+    case lessThan = "<"
+    case regexMatch = "matches regex"
+    
+    public var id: String { rawValue }
 }
 
-public enum AssertionTarget: String, Codable {
-    case statusCode
-    case responseTime
-    case header
-    case bodyContains
-    case jsonKeyExists
-    case jsonValue
+public enum AssertionTarget: String, Codable, CaseIterable, Identifiable {
+    case statusCode = "Status Code"
+    case responseTime = "Response Time (ms)"
+    case header = "Header"
+    case bodyContains = "Body Contains"
+    case jsonKeyExists = "JSON Key Exists"
+    case jsonValue = "JSON Value"
+    
+    public var id: String { rawValue }
 }
 
-public enum ParameterLocation: String, Codable {
-    case header
-    case query
-    case formField
+public enum ParameterLocation: String, Codable, CaseIterable, Identifiable {
+    case header = "Header"
+    case query = "Query"
+    case formField = "Form Field"
+    
+    public var id: String { rawValue }
 }
 ```
+
+### 6.1. ER-діаграма (Entity-Relationship)
+
+```
+SDEnvironment (1) ──── cascade ────▸ (*) SDEnvironmentVariable
+SDCollection  (1) ──── cascade ────▸ (*) SDRequest
+SDRequest     (1) ──── cascade ────▸ (*) SDRequestParameter
+SDRequest     (1) ──── cascade ────▸ (*) SDTestAssertion
+SDRequest     (1) ──── cascade ────▸ (*) SDExecutionResult
+SDExecutionResult (1) ─ cascade ───▸ (*) SDAssertionLog
+```
+
+---
+
+## 7. Статистика проєкту
+
+| Метрика | Значення |
+|---------|----------|
+| Мова | Swift 5.9+ |
+| Файли `.swift` | 26 |
+| Загальна кількість рядків коду | ~6,500+ |
+| SwiftData entities | 8 |
+| UI-екранів (Views) | 15+ (включно з sheets, alerts, runners) |
+| Автоматизованих тестів | 28 юніт-тестів у 11 @Suite |
+| HTTP-методів | 7 (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) |
+| Типів авторизації | 4 (None, Bearer, Basic, API Key) |
+| Типів assertions | 6 (StatusCode, ResponseTime, Header, BodyContains, JSONKeyExists, JSONValue) |
+| Типів порівнянь | 6 (==, !=, contains, >, <, regex) |
+| Вбудованих presets | 7 (з готовими assertions) |
+| Body types | 4 (None, JSON, Form Data, URL Encoded) |
+
+---
+
+## 8. Огляд тестового покриття
+
+### 8.1. Test Suites (`APICraftTests.swift`)
+
+| # | Suite | Кількість тестів | Опис |
+|---|-------|-----------------|------|
+| 1 | `VariableResolverTests` | 4 | Інтерполяція змінних: single, multiple, unmatched placeholder, empty map |
+| 2 | `CURLParserTests` | 4 | Парсинг GET/POST cURL (JSON та urlencoded body), генерація cURL з headers та body |
+| 3 | `AssertionEngineTests` | 5 | StatusCode, ResponseTime, Header (case-insensitive, regex, notEquals), Body (contains, notEquals, regex), JSON Key (nested, array), JSON Value (string, number, regex) |
+| 4 | `HTTPMethodAndModelTests` | 3 | Перевірка всіх 7 HTTP-методів, BodyType rawValues, AssertionComparison cases |
+| 5 | `ResponseCookieTests` | 1 | Маппінг властивостей ResponseCookie |
+| 6 | `CollectionPersistenceTests` | 1 | In-memory SwiftData: saveToCollection через ViewModel |
+| 7 | `RealWorldDataTests` | 4 | Encoded variables, JSONPlaceholder assertions, ClipboardPreviewInfo, SwiftData integration |
+| 8 | `URLSyncAndDecodingTests` | 3 | Cyrillic sync, percent-decode, arbitrary paste protection |
+| 9 | `AuthCURLExportTests` | 3 | cURL export з Bearer/Basic auth, cURL import Bearer parsing |
+| 10 | `FormattingAndTitleTests` | 2 | JSON prettify, resolveTitle host+path extraction |
+| 11 | `JSONPathEdgeCaseTests` | 3 | Empty path, whitespace path, root-level array lookup |
+
+**Загалом: 28 тестів у 11 @Suite** (оновлено з 14 до 28).

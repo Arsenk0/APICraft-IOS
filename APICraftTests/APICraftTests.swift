@@ -83,6 +83,21 @@ struct CURLParserTests {
         #expect(headerKeys.contains("Authorization"))
     }
     
+    @Test("Parse POST request with urlencoded form body")
+    func testParsePostWithURLEncodedBody() {
+        let curl = """
+        curl -X POST "https://api.example.com/login" \
+             -H "Content-Type: application/x-www-form-urlencoded" \
+             -d "username=arsen&password=secret"
+        """
+        let parsed = CURLParser.parse(curl)
+        #expect(parsed != nil)
+        #expect(parsed?.url == "https://api.example.com/login")
+        #expect(parsed?.method == HTTPMethodType.post)
+        #expect(parsed?.bodyType == BodyType.urlEncoded)
+        #expect(parsed?.body == "username=arsen&password=secret")
+    }
+    
     @Test("Generate cURL string for all methods")
     func testGenerateCURL() {
         let generated = CURLGenerator.generate(
@@ -560,8 +575,18 @@ struct RealWorldDataTests {
     @MainActor
     @Test("SwiftData In-Memory Model Container: Collection, Request, Environment and Assertions")
     func testSwiftDataCollectionAndEnvironmentIntegration() throws {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: SDCollection.self, SDRequest.self, SDRequestParameter.self, SDEnvironment.self, SDTestAssertion.self, configurations: config)
+        let schema = Schema([
+            SDCollection.self,
+            SDRequest.self,
+            SDRequestParameter.self,
+            SDTestAssertion.self,
+            SDExecutionResult.self,
+            SDAssertionLog.self,
+            SDEnvironment.self,
+            SDEnvironmentVariable.self
+        ])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
         let context = container.mainContext
         
         // Create Environment
@@ -656,5 +681,108 @@ struct URLSyncAndDecodingTests {
         
         #expect(!vm.url.contains("%D0%9C%D0%B0"))
         #expect(vm.url == sample)
+    }
+}
+
+// MARK: - Additional Coverage Tests (Auth, JSON Formatting, Title Resolution, JSONPath Edge Cases)
+
+@Suite("Auth & cURL Export Tests")
+struct AuthCURLExportTests {
+    
+    @Test("cURL export includes Bearer Authorization header")
+    @MainActor
+    func testCURLExportWithBearerToken() {
+        let vm = RequestBuilderViewModel()
+        vm.url = "https://api.example.com/users"
+        vm.method = .get
+        vm.authType = .bearer
+        vm.bearerToken = "mySecret123"
+        vm.headers = []
+        
+        let curl = vm.exportAsCURL()
+        #expect(curl.contains("Authorization: Bearer mySecret123"))
+        #expect(curl.contains("curl -X GET"))
+    }
+    
+    @Test("cURL export includes Basic Authorization header with Base64 encoding")
+    @MainActor
+    func testCURLExportWithBasicAuth() {
+        let vm = RequestBuilderViewModel()
+        vm.url = "https://api.example.com/login"
+        vm.method = .post
+        vm.authType = .basic
+        vm.basicUsername = "admin"
+        vm.basicPassword = "password123"
+        vm.headers = []
+        
+        let curl = vm.exportAsCURL()
+        // "admin:password123" in base64 = "YWRtaW46cGFzc3dvcmQxMjM="
+        #expect(curl.contains("Authorization: Basic YWRtaW46cGFzc3dvcmQxMjM="))
+    }
+    
+    @Test("cURL import detects Bearer token from Authorization header")
+    @MainActor
+    func testCURLImportBearerAuth() {
+        let vm = RequestBuilderViewModel()
+        let curlString = """
+        curl -X GET "https://api.example.com/me" \
+             -H "Authorization: Bearer tok_abc123"
+        """
+        let success = vm.importFromCURL(curlString)
+        #expect(success)
+        #expect(vm.authType == .bearer)
+        #expect(vm.bearerToken == "tok_abc123")
+        #expect(vm.url == "https://api.example.com/me")
+    }
+}
+
+@Suite("JSON Formatting & Title Resolution Tests")
+struct FormattingAndTitleTests {
+    
+    @Test("formatJSONBody pretty-prints valid JSON")
+    @MainActor
+    func testFormatJSONBody() {
+        let vm = RequestBuilderViewModel()
+        vm.bodyText = "{\"name\":\"Arsen\",\"age\":22}"
+        vm.formatJSONBody()
+        
+        #expect(vm.bodyText.contains("\"age\" : 22"))
+        #expect(vm.bodyText.contains("\"name\" : \"Arsen\""))
+    }
+    
+    @Test("resolveTitle extracts host and path from URL")
+    @MainActor
+    func testResolveTitleFromURL() {
+        let vm = RequestBuilderViewModel()
+        vm.title = ""
+        vm.url = "https://jsonplaceholder.typicode.com/posts/1"
+        
+        let resolved = vm.resolveTitle()
+        #expect(resolved == "jsonplaceholder.typicode.com/posts/1")
+    }
+}
+
+@Suite("JSON Path Lookup Edge Cases")
+struct JSONPathEdgeCaseTests {
+    
+    @Test("lookupJSONPath returns nil for empty path")
+    func testEmptyPathReturnsNil() {
+        let json: [String: Any] = ["key": "value"]
+        let result = AssertionEngine.lookupJSONPath(in: json, path: "")
+        #expect(result == nil)
+    }
+    
+    @Test("lookupJSONPath handles whitespace-only path")
+    func testWhitespaceOnlyPathReturnsNil() {
+        let json: [String: Any] = ["key": "value"]
+        let result = AssertionEngine.lookupJSONPath(in: json, path: "   ")
+        #expect(result == nil)
+    }
+    
+    @Test("lookupJSONPath works with root-level array")
+    func testRootArrayLookup() {
+        let json: [Any] = ["first", "second", "third"]
+        let result = AssertionEngine.lookupJSONPath(in: json, path: "1")
+        #expect(result as? String == "second")
     }
 }

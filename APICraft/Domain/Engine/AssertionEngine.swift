@@ -276,7 +276,7 @@ struct RequestExecutionService {
         }
         
         if recordHistoryCopy && !request.isHistoryItem {
-            let histTitle = request.title.hasPrefix("[Test]") ? request.title : request.title
+            let histTitle = request.title
             let histReq = SDRequest(
                 title: histTitle,
                 urlTemplate: request.urlTemplate,

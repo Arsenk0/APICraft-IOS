@@ -130,7 +130,18 @@ public struct CURLParser {
         
         var inferredBodyType: BodyType = .none
         if let body = resultBody, !body.isEmpty {
-            inferredBodyType = .json
+            let contentType = resultHeaders.first(where: { $0.key.caseInsensitiveCompare("content-type") == .orderedSame })?.value.lowercased() ?? ""
+            if contentType.contains("x-www-form-urlencoded") {
+                inferredBodyType = .urlEncoded
+            } else if contentType.contains("multipart/form-data") {
+                inferredBodyType = .formData
+            } else if contentType.contains("json") || body.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") || body.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[") {
+                inferredBodyType = .json
+            } else if body.contains("=") && !body.contains("\n") {
+                inferredBodyType = .urlEncoded
+            } else {
+                inferredBodyType = .json
+            }
         }
         
         return ParsedCURLRequest(
